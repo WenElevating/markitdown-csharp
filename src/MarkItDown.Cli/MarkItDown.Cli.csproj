@@ -12,5 +12,6 @@
     <ProjectReference Include="..\MarkItDown.Converters.Office\MarkItDown.Converters.Office.csproj" />
     <ProjectReference Include="..\MarkItDown.Converters.Data\MarkItDown.Converters.Data.csproj" />
     <ProjectReference Include="..\MarkItDown.Converters.Media\MarkItDown.Converters.Media.csproj" />
+    <ProjectReference Include="..\MarkItDown.Converters.Web\MarkItDown.Converters.Web.csproj" />
   </ItemGroup>
 </Project>

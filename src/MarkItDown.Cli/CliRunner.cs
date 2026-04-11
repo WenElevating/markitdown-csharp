@@ -4,6 +4,7 @@ using MarkItDown.Converters.Pdf;
 using MarkItDown.Converters.Office;
 using MarkItDown.Converters.Data;
 using MarkItDown.Converters.Media;
+using MarkItDown.Converters.Web;
 
 namespace MarkItDown.Cli;
 
@@ -35,7 +36,9 @@ public static class CliRunner
                 .Add(new EpubConverter())
                 .Add(new ZipConverter())
                 .Add(new ImageConverter())
-                .Add(new AudioConverter()));
+                .Add(new AudioConverter())
+                .Add(new WikipediaConverter())
+                .Add(new WebConverter()));
 
             var result = await engine.ConvertAsync(options.InputPath, cancellationToken);
 
