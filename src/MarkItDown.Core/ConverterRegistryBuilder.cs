@@ -26,9 +26,16 @@ public class ConverterRegistryBuilder
 
         foreach (var type in converterTypes)
         {
-            if (Activator.CreateInstance(type) is IConverter converter)
+            try
             {
-                _converters.Add(converter);
+                if (Activator.CreateInstance(type) is IConverter converter)
+                {
+                    _converters.Add(converter);
+                }
+            }
+            catch (MissingMethodException)
+            {
+                // Skip types without parameterless constructors
             }
         }
 
