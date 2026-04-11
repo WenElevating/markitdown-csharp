@@ -1,14 +1,13 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
-  <ItemGroup>
-    <ProjectReference Include="..\MarkItDown.Core\MarkItDown.Core.csproj" />
-  </ItemGroup>
-
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
-
+  <ItemGroup>
+    <ProjectReference Include="..\MarkItDown.Core\MarkItDown.Core.csproj" />
+    <ProjectReference Include="..\MarkItDown.Converters.Html\MarkItDown.Converters.Html.csproj" />
+    <ProjectReference Include="..\MarkItDown.Converters.Pdf\MarkItDown.Converters.Pdf.csproj" />
+  </ItemGroup>
 </Project>

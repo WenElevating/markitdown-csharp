@@ -1,4 +1,6 @@
 using MarkItDown.Core;
+using MarkItDown.Converters.Html;
+using MarkItDown.Converters.Pdf;
 
 namespace MarkItDown.Cli;
 
@@ -13,8 +15,11 @@ public static class CliRunner
         try
         {
             var options = Parse(args);
-            var engine = MarkItDownEngine.CreateDefault();
-            var result = await engine.ConvertAsync(new DocumentConversionRequest(options.InputPath), cancellationToken);
+            var engine = new MarkItDownEngine(builder => builder
+                .Add(new HtmlConverter())
+                .Add(new PdfConverter()));
+
+            var result = await engine.ConvertAsync(options.InputPath, cancellationToken);
 
             if (string.IsNullOrWhiteSpace(options.OutputPath))
             {
@@ -37,7 +42,12 @@ public static class CliRunner
 
             return 0;
         }
-        catch (ConversionException ex) when (ex.Code is ConversionErrorCode.InvalidInput or ConversionErrorCode.UnsupportedFormat or ConversionErrorCode.UnsupportedContent)
+        catch (FileNotFoundException ex)
+        {
+            await stderr.WriteLineAsync(ex.Message);
+            return 1;
+        }
+        catch (UnsupportedFormatException ex)
         {
             await stderr.WriteLineAsync(ex.Message);
             return 1;
@@ -64,24 +74,18 @@ public static class CliRunner
                     index++;
                     if (index >= args.Count)
                     {
-                        throw new ConversionException(ConversionErrorCode.InvalidInput, "Missing output path after -o/--output.");
+                        throw new ArgumentException("Missing output path after -o/--output.");
                     }
-
                     outputPath = args[index];
                     break;
                 case "-h":
                 case "--help":
-                    throw new ConversionException(
-                        ConversionErrorCode.InvalidInput,
-                        "Usage: markitdown <input-file> [-o|--output <output-file>]");
+                    throw new ArgumentException("Usage: markitdown <input-file> [-o|--output <output-file>]");
                 default:
                     if (inputPath is not null)
                     {
-                        throw new ConversionException(
-                            ConversionErrorCode.InvalidInput,
-                            "Only one input file path is supported.");
+                        throw new ArgumentException("Only one input file path is supported.");
                     }
-
                     inputPath = arg;
                     break;
             }
@@ -89,9 +93,7 @@ public static class CliRunner
 
         if (string.IsNullOrWhiteSpace(inputPath))
         {
-            throw new ConversionException(
-                ConversionErrorCode.InvalidInput,
-                "Usage: markitdown <input-file> [-o|--output <output-file>]");
+            throw new ArgumentException("Usage: markitdown <input-file> [-o|--output <output-file>]");
         }
 
         return new CliOptions(inputPath, outputPath);
