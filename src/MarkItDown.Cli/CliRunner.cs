@@ -3,6 +3,7 @@ using MarkItDown.Converters.Html;
 using MarkItDown.Converters.Pdf;
 using MarkItDown.Converters.Office;
 using MarkItDown.Converters.Data;
+using MarkItDown.Converters.Media;
 
 namespace MarkItDown.Cli;
 
@@ -32,7 +33,9 @@ public static class CliRunner
                 .Add(new IpynbConverter())
                 .Add(new RssConverter())
                 .Add(new EpubConverter())
-                .Add(new ZipConverter()));
+                .Add(new ZipConverter())
+                .Add(new ImageConverter())
+                .Add(new AudioConverter()));
 
             var result = await engine.ConvertAsync(options.InputPath, cancellationToken);
 
