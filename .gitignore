@@ -1,0 +1,30 @@
+## Build output
+bin/
+obj/
+
+## .NET tooling
+.nuget/
+.dotnet/
+.dotnet-home/
+.templateengine/
+
+## IDE
+.vs/
+.vscode/
+*.user
+*.suo
+
+## Temp files
+tmp-*.md
+*.log
+
+## OS files
+Thumbs.db
+.DS_Store
+
+## Tool state
+.omc/
+.omx/
+
+## Worktrees (isolated workspaces)
+.worktrees/
