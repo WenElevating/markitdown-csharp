@@ -2,6 +2,7 @@ using MarkItDown.Core;
 using MarkItDown.Converters.Html;
 using MarkItDown.Converters.Pdf;
 using MarkItDown.Converters.Office;
+using MarkItDown.Converters.Data;
 
 namespace MarkItDown.Cli;
 
@@ -23,7 +24,15 @@ public static class CliRunner
                 .Add(new XlsxConverter())
                 .Add(new DocxConverter())
                 .Add(new PptxConverter())
-                .Add(new MsgConverter()));
+                .Add(new MsgConverter())
+                .Add(new MarkdownConverter())
+                .Add(new JsonConverter())
+                .Add(new JsonlConverter())
+                .Add(new XmlConverter())
+                .Add(new IpynbConverter())
+                .Add(new RssConverter())
+                .Add(new EpubConverter())
+                .Add(new ZipConverter()));
 
             var result = await engine.ConvertAsync(options.InputPath, cancellationToken);
 
