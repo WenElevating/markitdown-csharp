@@ -1,6 +1,7 @@
 using MarkItDown.Core;
 using MarkItDown.Converters.Html;
 using MarkItDown.Converters.Pdf;
+using MarkItDown.Converters.Office;
 
 namespace MarkItDown.Cli;
 
@@ -17,7 +18,12 @@ public static class CliRunner
             var options = Parse(args);
             var engine = new MarkItDownEngine(builder => builder
                 .Add(new HtmlConverter())
-                .Add(new PdfConverter()));
+                .Add(new PdfConverter())
+                .Add(new CsvConverter())
+                .Add(new XlsxConverter())
+                .Add(new DocxConverter())
+                .Add(new PptxConverter())
+                .Add(new MsgConverter()));
 
             var result = await engine.ConvertAsync(options.InputPath, cancellationToken);
 
