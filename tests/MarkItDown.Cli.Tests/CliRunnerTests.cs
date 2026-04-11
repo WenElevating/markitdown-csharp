@@ -40,20 +40,20 @@ public sealed class CliRunnerTests
     }
 
     [Fact]
-    public async Task Cli_ReturnsValidationErrorForUnsupportedInput()
+    public async Task Cli_ReturnsErrorForUnsupportedInput()
     {
         var result = await RunCliAsync(FixturePath.For("unsupported.txt"));
 
         Assert.Equal(1, result.ExitCode);
-        Assert.Contains("Unsupported file format", result.Stderr);
+        Assert.Contains("No converter registered", result.Stderr);
     }
 
     [Fact]
-    public async Task Cli_ReturnsValidationErrorForScannedPdf()
+    public async Task Cli_ReturnsErrorForScannedPdf()
     {
         var result = await RunCliAsync(FixturePath.For("scanned.pdf"));
 
-        Assert.Equal(1, result.ExitCode);
+        Assert.Equal(2, result.ExitCode);
         Assert.Contains("Scanned or image-only PDFs are not supported", result.Stderr);
     }
 
@@ -67,7 +67,7 @@ public sealed class CliRunnerTests
             StartInfo = new ProcessStartInfo
             {
                 FileName = "dotnet",
-                Arguments = $"run --project {Quote(projectPath)} --no-build -- {cliArguments}",
+                Arguments = $"run --project {Quote(projectPath)} -- {cliArguments}",
                 WorkingDirectory = FixturePath.RepositoryRoot,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -90,10 +90,7 @@ public sealed class CliRunnerTests
         return new CliResult(process.ExitCode, stdout, stderr);
     }
 
-    private static string Quote(string value)
-    {
-        return $"\"{value.Replace("\"", "\\\"")}\"";
-    }
+    private static string Quote(string value) => $"\"{value.Replace("\"", "\\\"")}\"";
 
     private sealed record CliResult(int ExitCode, string Stdout, string Stderr);
 }
