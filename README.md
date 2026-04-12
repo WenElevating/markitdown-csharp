@@ -152,6 +152,7 @@ Each converter declares its supported file extensions and MIME types. The engine
 
 - [microsoft/markitdown](https://github.com/microsoft/markitdown) — This project is a C# port of the original Python library. Special thanks to the authors for designing an excellent conversion architecture.
 - [obra/superpowers](https://github.com/obra/superpowers) — A third-party skill plugin for [Claude Code](https://claude.ai/code), used throughout the development of this project.
+- [opendataloader-project/opendataloader-pdf](https://github.com/opendataloader-project/opendataloader-pdf) — The projection profile layout algorithm used in PDF parsing was inspired by this project.
 
 ## License
 
