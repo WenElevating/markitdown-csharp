@@ -87,4 +87,140 @@ public sealed class PdfLayoutAnalyzerTests
         var result = PdfLayoutAnalyzer.AnalyzeReadingOrder([], 12.0);
         Assert.Empty(result);
     }
+
+    [Fact]
+    public void DetectHeadersFooters_RepeatedText_Marked()
+    {
+        var pageHeight = 800.0;
+        var page1 = new List<PdfContentBlock>
+        {
+            Txt(790, 780, 50, 200, "Company Confidential", 8),
+            Txt(700, 680, 50, 500, "Main content page 1"),
+        };
+        var page2 = new List<PdfContentBlock>
+        {
+            Txt(790, 780, 50, 200, "Company Confidential", 8),
+            Txt(700, 680, 50, 500, "Main content page 2"),
+        };
+        var page3 = new List<PdfContentBlock>
+        {
+            Txt(790, 780, 50, 200, "Company Confidential", 8),
+            Txt(700, 680, 50, 500, "Main content page 3"),
+        };
+        var allPages = new List<List<PdfContentBlock>> { page1, page2, page3 };
+
+        PdfLayoutAnalyzer.DetectHeadersFooters(allPages, pageHeight);
+
+        Assert.True(((PdfTextBlock)page1[0]).IsHeaderFooter);
+        Assert.True(((PdfTextBlock)page2[0]).IsHeaderFooter);
+        Assert.True(((PdfTextBlock)page3[0]).IsHeaderFooter);
+        Assert.False(((PdfTextBlock)page1[1]).IsHeaderFooter);
+    }
+
+    [Fact]
+    public void DetectHeadersFooters_PageNumber_Marked()
+    {
+        var pageHeight = 800.0;
+        var page = new List<PdfContentBlock>
+        {
+            Txt(10, 5, 350, 450, "3/20", 10),
+            Txt(700, 680, 50, 500, "Content"),
+        };
+        var allPages = new List<List<PdfContentBlock>> { page };
+
+        PdfLayoutAnalyzer.DetectHeadersFooters(allPages, pageHeight);
+
+        Assert.True(((PdfTextBlock)page[0]).IsHeaderFooter);
+    }
+
+    [Fact]
+    public void DetectHeadersFooters_UniqueText_NotMarked()
+    {
+        var pageHeight = 800.0;
+        var page = new List<PdfContentBlock>
+        {
+            Txt(790, 780, 50, 200, "Unique title", 10),
+            Txt(700, 680, 50, 500, "Content"),
+        };
+        var allPages = new List<List<PdfContentBlock>> { page };
+
+        PdfLayoutAnalyzer.DetectHeadersFooters(allPages, pageHeight);
+
+        Assert.False(((PdfTextBlock)page[0]).IsHeaderFooter);
+    }
+
+    [Fact]
+    public void DetectCaptions_TextBelowSmallFont_Marked()
+    {
+        var blocks = new List<PdfContentBlock>
+        {
+            Img(700, 620, 50, 400),
+            Txt(610, 595, 60, 390, "Figure 1: Caption text", 9),
+            Txt(580, 560, 50, 400, "Body text", 12),
+        };
+
+        var captions = PdfLayoutAnalyzer.DetectCaptions(blocks, 12.0);
+
+        Assert.Single(captions);
+        Assert.Contains(1, captions);
+    }
+
+    [Fact]
+    public void DetectCaptions_NoNearbyText_NoCaption()
+    {
+        var blocks = new List<PdfContentBlock>
+        {
+            Img(700, 620, 50, 400),
+            Txt(580, 560, 50, 400, "Body text far away", 12),
+        };
+
+        var captions = PdfLayoutAnalyzer.DetectCaptions(blocks, 12.0);
+        Assert.Empty(captions);
+    }
+
+    [Fact]
+    public void DetectLists_NumberedItems_Detected()
+    {
+        var blocks = new List<PdfContentBlock>
+        {
+            Txt(700, 680, 50, 400, "1. First item"),
+            Txt(660, 640, 50, 400, "2. Second item"),
+            Txt(620, 600, 50, 400, "3. Third item"),
+            Txt(560, 540, 50, 400, "Normal text"),
+        };
+
+        var lists = PdfLayoutAnalyzer.DetectLists(blocks);
+
+        Assert.Single(lists);
+        Assert.Equal(0, lists[0].Start);
+        Assert.Equal(3, lists[0].Length);
+    }
+
+    [Fact]
+    public void DetectLists_BulletedItems_Detected()
+    {
+        var blocks = new List<PdfContentBlock>
+        {
+            Txt(700, 680, 50, 400, "• First bullet"),
+            Txt(660, 640, 50, 400, "• Second bullet"),
+        };
+
+        var lists = PdfLayoutAnalyzer.DetectLists(blocks);
+
+        Assert.Single(lists);
+        Assert.Equal(2, lists[0].Length);
+    }
+
+    [Fact]
+    public void DetectLists_SingleItem_NotAList()
+    {
+        var blocks = new List<PdfContentBlock>
+        {
+            Txt(700, 680, 50, 400, "1. Only one item"),
+            Txt(660, 640, 50, 400, "Normal text"),
+        };
+
+        var lists = PdfLayoutAnalyzer.DetectLists(blocks);
+        Assert.Empty(lists);
+    }
 }

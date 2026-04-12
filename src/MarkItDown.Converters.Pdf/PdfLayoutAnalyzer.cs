@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace MarkItDown.Converters.Pdf;
 
 /// <summary>
@@ -216,36 +218,150 @@ internal static class PdfLayoutAnalyzer
     }
 
     /// <summary>
-    /// Detects headers and footers across pages. Stub — full implementation
-    /// in a subsequent task.
+    /// Detects headers and footers across pages by finding text that repeats
+    /// in the top or bottom margin region on 3+ pages, or that matches a page
+    /// number pattern. Detected blocks are marked with <see cref="PdfContentBlock.IsHeaderFooter"/>.
     /// </summary>
     internal static void DetectHeadersFooters(
         List<List<PdfContentBlock>> allPageBlocks,
         double pageHeight)
     {
-        // Stub: no-op for now.
+        var threshold = pageHeight * 0.1;
+        var textCounts = new Dictionary<string, int>();
+        var seenPerPage = new HashSet<string>();
+
+        // Count occurrences of text in top/bottom regions across pages.
+        foreach (var pageBlocks in allPageBlocks)
+        {
+            seenPerPage.Clear();
+            foreach (var block in pageBlocks)
+            {
+                if (block is not PdfTextBlock text) continue;
+                var inTopRegion = text.Top > pageHeight - threshold;
+                var inBottomRegion = text.Bottom < threshold;
+                if (!inTopRegion && !inBottomRegion) continue;
+
+                var normalized = Regex.Replace(text.Text.Trim(), @"\s+", " ");
+                if (string.IsNullOrEmpty(normalized)) continue;
+
+                var key = $"{normalized}|{inTopRegion}";
+                if (seenPerPage.Add(key))
+                {
+                    textCounts.TryGetValue(key, out var count);
+                    textCounts[key] = count + 1;
+                }
+            }
+        }
+
+        // Mark blocks on pages.
+        var pageNumberPattern = new Regex(@"^\d+([/\-–—]\d+)?$");
+        for (var p = 0; p < allPageBlocks.Count; p++)
+        {
+            var pageBlocks = allPageBlocks[p];
+            for (var i = 0; i < pageBlocks.Count; i++)
+            {
+                if (pageBlocks[i] is not PdfTextBlock text) continue;
+                var inTopRegion = text.Top > pageHeight - threshold;
+                var inBottomRegion = text.Bottom < threshold;
+                if (!inTopRegion && !inBottomRegion) continue;
+
+                var shouldMark = false;
+
+                // Repeated on 3+ pages.
+                var normalized = Regex.Replace(text.Text.Trim(), @"\s+", " ");
+                if (!string.IsNullOrEmpty(normalized))
+                {
+                    var key = $"{normalized}|{inTopRegion}";
+                    if (textCounts.TryGetValue(key, out var count) && count >= 3)
+                        shouldMark = true;
+                }
+
+                // Page number pattern.
+                if (pageNumberPattern.IsMatch(text.Text.Trim()))
+                    shouldMark = true;
+
+                if (shouldMark)
+                    pageBlocks[i] = text with { IsHeaderFooter = true };
+            }
+        }
     }
 
     /// <summary>
-    /// Detects caption blocks (e.g. figure captions). Stub — full implementation
-    /// in a subsequent task.
+    /// Detects caption blocks (e.g. figure captions) by finding text blocks
+    /// that appear directly below images, with a smaller font size than body text
+    /// and significant horizontal overlap with the image.
     /// </summary>
     internal static HashSet<int> DetectCaptions(
         List<PdfContentBlock> orderedBlocks,
         double bodyFontSize)
     {
-        // Stub: return empty set for now.
-        return [];
+        var captionIndices = new HashSet<int>();
+        var maxDistance = bodyFontSize * 1.5;
+
+        for (var i = 0; i < orderedBlocks.Count; i++)
+        {
+            if (orderedBlocks[i] is not PdfImageBlock image) continue;
+
+            for (var j = i + 1; j < orderedBlocks.Count && j <= i + 3; j++)
+            {
+                if (orderedBlocks[j] is not PdfTextBlock text) continue;
+                if (text.IsHeaderFooter) continue;
+
+                var verticalDistance = image.Bottom - text.Top;
+                if (verticalDistance < 0 || verticalDistance > maxDistance) break;
+
+                var horizontalOverlap = Math.Min(image.Right, text.Right) - Math.Max(image.Left, text.Left);
+                var imageWidth = image.Right - image.Left;
+                if (imageWidth > 0 && horizontalOverlap / imageWidth >= 0.5)
+                {
+                    if (text.FontSize < bodyFontSize)
+                        captionIndices.Add(j);
+                }
+            }
+        }
+
+        return captionIndices;
     }
 
+    private static readonly Regex NumberedListPattern = new(@"^\d+[.)、]\s", RegexOptions.Compiled);
+    private static readonly Regex BulletedListPattern = new(@"^[•·●◇◆\-–—]\s", RegexOptions.Compiled);
+
     /// <summary>
-    /// Detects list items in the ordered blocks. Stub — full implementation
-    /// in a subsequent task.
+    /// Detects list items in the ordered blocks by matching numbered (e.g. "1. ", "2) ")
+    /// or bulleted (e.g. "• ", "- ") prefixes. Consecutive items are grouped into lists.
+    /// Only groups of 2+ consecutive items are returned.
     /// </summary>
     internal static List<(int Start, int Length)> DetectLists(
         List<PdfContentBlock> orderedBlocks)
     {
-        // Stub: return empty list for now.
-        return [];
+        var lists = new List<(int Start, int Length)>();
+        var currentStart = -1;
+        var currentLength = 0;
+
+        for (var i = 0; i < orderedBlocks.Count; i++)
+        {
+            if (orderedBlocks[i] is not PdfTextBlock text) continue;
+
+            var isListItem = NumberedListPattern.IsMatch(text.Text) ||
+                             BulletedListPattern.IsMatch(text.Text);
+
+            if (isListItem)
+            {
+                if (currentStart < 0) currentStart = i;
+                currentLength++;
+            }
+            else
+            {
+                if (currentLength >= 2)
+                    lists.Add((currentStart, currentLength));
+                currentStart = -1;
+                currentLength = 0;
+            }
+        }
+
+        if (currentLength >= 2)
+            lists.Add((currentStart, currentLength));
+
+        return lists;
     }
 }
