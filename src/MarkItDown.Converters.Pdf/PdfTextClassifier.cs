@@ -26,6 +26,10 @@ internal static class PdfTextClassifier
             }
 
             var rowFontSize = row.Average(w => w.Letters.Average(l => l.FontSize));
+            var isBold = row.SelectMany(w => w.Letters)
+                .Any(l => l.Font?.Name?.Contains("Bold", StringComparison.OrdinalIgnoreCase) == true
+                       || l.Font?.Name?.Contains("黑体", StringComparison.OrdinalIgnoreCase) == true
+                       || l.Font?.Name?.Contains("粗体", StringComparison.OrdinalIgnoreCase) == true);
             var top = row.Max(w => w.BoundingBox.Top);
             var bottom = row.Min(w => w.BoundingBox.Bottom);
             var y = (top + bottom) / 2.0;
@@ -39,7 +43,8 @@ internal static class PdfTextClassifier
                 Left: left,
                 Right: right,
                 Text: text,
-                FontSize: rowFontSize));
+                FontSize: rowFontSize,
+                IsBold: isBold));
         }
 
         return blocks;
@@ -91,20 +96,22 @@ internal static class PdfTextClassifier
         return builder.ToString().Trim();
     }
 
-    internal static string ClassifyRole(double fontSize, double bodyFontSize, string text)
+    internal static string ClassifyRole(double fontSize, double bodyFontSize, string text, bool isBold = false)
     {
         if (bodyFontSize <= 0) return "body";
 
         var ratio = fontSize / bodyFontSize;
 
-        if (ratio >= 1.5)
+        // Bold + short line → likely heading
+        if (isBold && text.Length < 80)
         {
-            return text.Length < 40 ? "heading" : "body";
+            return "heading";
         }
 
-        if (ratio < 0.7)
+        // Significantly larger font → heading (if short enough)
+        if (ratio >= 1.5 && text.Length < 60)
         {
-            return "caption";
+            return "heading";
         }
 
         return "body";

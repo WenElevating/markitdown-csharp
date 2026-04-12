@@ -125,7 +125,7 @@ internal static class PdfContentGrouper
         }
 
         // Heading: font-size-based classification.
-        var role = PdfTextClassifier.ClassifyRole(text.FontSize, bodyFontSize, text.Text);
+        var role = PdfTextClassifier.ClassifyRole(text.FontSize, bodyFontSize, text.Text, text.IsBold);
         if (role == "heading")
         {
             return $"## {text.Text}";

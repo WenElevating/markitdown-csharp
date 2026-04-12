@@ -10,7 +10,8 @@ internal sealed record PdfTextBlock(
     double Left, double Right,
     string Text,
     double FontSize,
-    bool IsHeaderFooter = false) : PdfContentBlock(Y, Top, Bottom, Left, Right, IsHeaderFooter);
+    bool IsHeaderFooter = false,
+    bool IsBold = false) : PdfContentBlock(Y, Top, Bottom, Left, Right, IsHeaderFooter);
 
 internal sealed record PdfImageBlock(
     double Y, double Top, double Bottom,
