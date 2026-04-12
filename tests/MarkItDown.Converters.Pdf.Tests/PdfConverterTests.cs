@@ -134,8 +134,8 @@ public sealed class PdfConverterTests
     {
         var blocks = new List<PdfContentBlock>
         {
-            new PdfImageBlock(700, 720, 680, 1, 0, "page1_img0.png"),
-            new PdfTextBlock(650, 660, 640, "Some text", 12.0),
+            new PdfImageBlock(700, 720, 680, 50, 400, 1, 0, "page1_img0.png"),
+            new PdfTextBlock(650, 660, 640, 50, 400, "Some text", 12.0),
         };
 
         var markdown = PdfContentGrouper.RenderPage(blocks, 12.0, "PuYu_files");
@@ -149,7 +149,7 @@ public sealed class PdfConverterTests
     {
         var blocks = new List<PdfContentBlock>
         {
-            new PdfImageBlock(700, 720, 680, 1, 0, "page1_img0.png"),
+            new PdfImageBlock(700, 720, 680, 50, 400, 1, 0, "page1_img0.png"),
         };
 
         var markdown = PdfContentGrouper.RenderPage(blocks, 12.0);
