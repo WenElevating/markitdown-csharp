@@ -150,7 +150,8 @@ ConverterRegistry → MarkItDownEngine → CLI / 库调用方
 
 ## 致谢
 
-本项目是 [microsoft/markitdown](https://github.com/microsoft/markitdown) 的 C# 移植版本。特别感谢原作者设计了一套优秀的转换架构。
+- [microsoft/markitdown](https://github.com/microsoft/markitdown) — 本项目是该 Python 库的 C# 移植版本。特别感谢原作者设计了一套优秀的转换架构。
+- [obra/superpowers](https://github.com/obra/superpowers) — [Claude Code](https://claude.ai/code) 的第三方技能插件，本项目全程使用其辅助开发。
 
 ## 许可证
 

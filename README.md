@@ -150,7 +150,8 @@ Each converter declares its supported file extensions and MIME types. The engine
 
 ## Acknowledgements
 
-This project is a C# port of [microsoft/markitdown](https://github.com/microsoft/markitdown). Special thanks to the original authors for designing an excellent conversion architecture.
+- [microsoft/markitdown](https://github.com/microsoft/markitdown) — This project is a C# port of the original Python library. Special thanks to the authors for designing an excellent conversion architecture.
+- [obra/superpowers](https://github.com/obra/superpowers) — A third-party skill plugin for [Claude Code](https://claude.ai/code), used throughout the development of this project.
 
 ## License
 
