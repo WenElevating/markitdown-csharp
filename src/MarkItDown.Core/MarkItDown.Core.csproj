@@ -4,6 +4,8 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <PackageId>MarkItDown.Core</PackageId>
+    <Description>Core library for converting documents to Markdown with plugin-based converter architecture</Description>
   </PropertyGroup>
 
 </Project>

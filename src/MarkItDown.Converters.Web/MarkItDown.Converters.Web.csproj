@@ -3,6 +3,8 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <PackageId>MarkItDown.Web</PackageId>
+    <Description>Web converter for MarkItDown — URLs and Wikipedia articles</Description>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="HtmlAgilityPack" Version="1.11.71" />

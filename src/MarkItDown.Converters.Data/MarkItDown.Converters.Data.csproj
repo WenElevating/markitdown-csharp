@@ -3,6 +3,8 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <PackageId>MarkItDown.Data</PackageId>
+    <Description>Data format converter for MarkItDown — json, jsonl, xml, rss, atom, ipynb, epub, zip, md</Description>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\MarkItDown.Core\MarkItDown.Core.csproj" />

@@ -4,6 +4,8 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <PackageId>MarkItDown.Llm</PackageId>
+    <Description>LLM integration for MarkItDown — OpenAI-compatible image and audio captioning</Description>
   </PropertyGroup>
 
   <ItemGroup>

@@ -3,6 +3,8 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <PackageId>MarkItDown.Pdf</PackageId>
+    <Description>PDF to Markdown converter for MarkItDown — supports text extraction, images, tables, and layout analysis</Description>
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="MarkItDown.Converters.Pdf.Tests" />
