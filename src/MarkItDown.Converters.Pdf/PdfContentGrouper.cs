@@ -90,16 +90,21 @@ internal static class PdfContentGrouper
         }
 
         // Check for table pattern among text blocks
-        var tableTexts = DetectTableRows(texts);
-        if (tableTexts is not null)
-        {
-            parts.Add(tableTexts);
-            return string.Join(Environment.NewLine, parts);
-        }
+        var (tableStart, tableLength, tableMarkdown) = DetectTableRows(texts);
 
-        // Render text blocks individually
-        foreach (var text in texts)
+        // Render text blocks before the table
+        for (var i = 0; i < texts.Count; i++)
         {
+            if (tableMarkdown is not null && i >= tableStart && i < tableStart + tableLength)
+            {
+                if (i == tableStart)
+                {
+                    parts.Add(tableMarkdown);
+                }
+                continue;
+            }
+
+            var text = texts[i];
             var role = PdfTextClassifier.ClassifyRole(text.FontSize, bodyFontSize, text.Text);
             var rendered = role switch
             {
@@ -113,29 +118,58 @@ internal static class PdfContentGrouper
         return string.Join(Environment.NewLine, parts);
     }
 
-    private static string? DetectTableRows(List<PdfTextBlock> texts)
+    private static (int start, int length, string? markdown) DetectTableRows(List<PdfTextBlock> texts)
     {
-        if (texts.Count < 2) return null;
+        if (texts.Count < 2) return (0, 0, null);
 
-        var tableRows = new List<List<string>>();
-        foreach (var text in texts)
+        // Find the longest contiguous run of rows with 3+ columns.
+        var bestStart = -1;
+        var bestLength = 0;
+        var currentStart = -1;
+        var currentLength = 0;
+
+        for (var i = 0; i < texts.Count; i++)
         {
             var cells = ColumnSplitRegex
-                .Split(text.Text.Trim())
+                .Split(texts[i].Text.Trim())
                 .Where(cell => !string.IsNullOrWhiteSpace(cell))
                 .ToList();
 
             if (cells.Count >= 3)
             {
-                tableRows.Add(cells);
+                if (currentStart < 0) currentStart = i;
+                currentLength++;
             }
             else
             {
-                break;
+                if (currentLength > bestLength)
+                {
+                    bestStart = currentStart;
+                    bestLength = currentLength;
+                }
+                currentStart = -1;
+                currentLength = 0;
             }
         }
 
-        if (tableRows.Count < 2) return null;
+        // Check final run
+        if (currentLength > bestLength)
+        {
+            bestStart = currentStart;
+            bestLength = currentLength;
+        }
+
+        if (bestLength < 2) return (0, 0, null);
+
+        var tableRows = new List<List<string>>();
+        for (var i = bestStart; i < bestStart + bestLength; i++)
+        {
+            var cells = ColumnSplitRegex
+                .Split(texts[i].Text.Trim())
+                .Where(cell => !string.IsNullOrWhiteSpace(cell))
+                .ToList();
+            tableRows.Add(cells);
+        }
 
         var columnCount = tableRows.Max(r => r.Count);
         foreach (var row in tableRows)
@@ -155,7 +189,7 @@ internal static class PdfContentGrouper
             builder.AppendLine($"| {string.Join(" | ", row.Select(EscapeCell))} |");
         }
 
-        return builder.ToString().TrimEnd();
+        return (bestStart, bestLength, builder.ToString().TrimEnd());
     }
 
     private static string EscapeCell(string value) => value.Replace("|", "\\|").Trim();

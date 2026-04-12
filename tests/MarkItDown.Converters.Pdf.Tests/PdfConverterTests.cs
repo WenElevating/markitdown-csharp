@@ -37,6 +37,6 @@ public sealed class PdfConverterTests
         var exception = await Assert.ThrowsAsync<ConversionException>(() =>
             _converter.ConvertAsync(new DocumentConversionRequest { FilePath = FixturePath.For("scanned.pdf") }));
 
-        Assert.Contains("Scanned or image-only PDFs are not supported", exception.Message);
+        Assert.Contains("The PDF did not contain extractable text or images", exception.Message);
     }
 }
