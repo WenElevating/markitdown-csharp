@@ -49,12 +49,12 @@ public sealed class CliRunnerTests
     }
 
     [Fact]
-    public async Task Cli_ReturnsErrorForScannedPdf()
+    public async Task Cli_ExtractsImagesFromScannedPdf()
     {
         var result = await RunCliAsync(FixturePath.For("scanned.pdf"));
 
-        Assert.Equal(2, result.ExitCode);
-        Assert.Contains("Scanned or image-only PDFs are not supported", result.Stderr);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("![image]", result.Stdout);
     }
 
     private static async Task<CliResult> RunCliAsync(params string[] args)
