@@ -31,4 +31,18 @@ public sealed class HtmlConverterTests
         Assert.Contains("[inventory trends](https://example.com/inventory)", result.Markdown);
         Assert.DoesNotContain("Home", result.Markdown);
     }
+
+    [Fact]
+    public async Task ConvertAsync_ConvertsLinksInAllContexts()
+    {
+        var result = await _converter.ConvertAsync(
+            new DocumentConversionRequest { FilePath = FixturePath.For("links.html") });
+
+        // Link inside <p>
+        Assert.Contains("[visit us](https://example.com)", result.Markdown);
+        // Bare link as direct child of <div>
+        Assert.Contains("[GitHub](https://github.com)", result.Markdown);
+        // Link inside <li>
+        Assert.Contains("[MS Docs](https://docs.microsoft.com)", result.Markdown);
+    }
 }

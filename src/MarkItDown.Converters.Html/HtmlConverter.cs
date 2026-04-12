@@ -65,7 +65,7 @@ public sealed class HtmlConverter : BaseConverter
         }
 
         var structuralNoise = document.DocumentNode.SelectNodes(
-            "//nav|//aside|//footer|//*[@aria-label='Main']|//*[contains(@class,'sidebar')]|//*[contains(@class,'navbar')]|//*[contains(@class,'tableOfContents')]|//*[contains(@class,'pagination')]|//*[contains(@class,'announcementBar')]|//*[contains(@class,'searchBar')]|//*[contains(@id,'sidebar')]|//*[contains(@id,'footer')]|//*[contains(@id,'navbar')]");
+            "//nav|//aside|//footer|//*[@aria-label='Main']|//*[contains(concat(' ',normalize-space(@class),' '),' sidebar ')]|//*[contains(concat(' ',normalize-space(@class),' '),' navbar ')]|//*[contains(concat(' ',normalize-space(@class),' '),' tableOfContents ')]|//*[contains(concat(' ',normalize-space(@class),' '),' pagination ')]|//*[contains(concat(' ',normalize-space(@class),' '),' announcementBar ')]|//*[contains(concat(' ',normalize-space(@class),' '),' searchBar ')]|//*[contains(@id,'sidebar')]|//*[contains(@id,'footer')]|//*[contains(@id,'navbar')]");
 
         if (structuralNoise is null)
         {
@@ -183,7 +183,7 @@ public sealed class HtmlConverter : BaseConverter
                     yield break;
                 }
 
-                var inline = RenderInlineChildren(node);
+                var inline = RenderInlineNode(node);
                 if (!string.IsNullOrWhiteSpace(inline))
                 {
                     yield return inline;
@@ -260,7 +260,7 @@ public sealed class HtmlConverter : BaseConverter
     {
         var inlineParts = item.ChildNodes
             .Where(child => child.Name is not "ul" and not "ol")
-            .Select(RenderInlineChildren)
+            .Select(RenderInlineNode)
             .Where(text => !string.IsNullOrWhiteSpace(text))
             .ToList();
 

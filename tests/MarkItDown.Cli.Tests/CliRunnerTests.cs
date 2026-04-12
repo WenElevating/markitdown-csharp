@@ -27,7 +27,7 @@ public sealed class CliRunnerTests
             Assert.True(File.Exists(outputFile));
             var content = await File.ReadAllTextAsync(outputFile);
             Assert.Contains("Introduction", content);
-            Assert.Equal(string.Empty, result.Stdout);
+            Assert.Contains("Converted:", result.Stdout);
             Assert.Equal(string.Empty, result.Stderr);
         }
         finally

@@ -18,7 +18,7 @@ public static class CliRunner
         Arity = ArgumentArity.ZeroOrMore
     };
 
-    private static readonly Option<string?> OutputOption = new("--output")
+    private static readonly Option<string?> OutputOption = new("-o", "--output")
     {
         Description = "Output file or directory (default: stdout)"
     };
@@ -234,6 +234,7 @@ public static class CliRunner
             if (!string.IsNullOrWhiteSpace(dir))
                 Directory.CreateDirectory(dir);
             await File.WriteAllTextAsync(outputPath, result.Markdown, ct);
+            await stdout.WriteLineAsync($"Converted: {inputPath} -> {Path.GetFullPath(outputPath)}");
         }
 
         return 0;
@@ -257,6 +258,7 @@ public static class CliRunner
             if (!string.IsNullOrWhiteSpace(dir))
                 Directory.CreateDirectory(dir);
             await File.WriteAllTextAsync(outputPath, result.Markdown);
+            Console.WriteLine($"Converted: {inputPath} -> {Path.GetFullPath(outputPath)}");
         }
 
         return 0;
