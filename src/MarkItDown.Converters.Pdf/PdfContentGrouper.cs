@@ -17,14 +17,70 @@ internal static class PdfContentGrouper
             return string.Empty;
         }
 
-        var sorted = blocks.OrderByDescending(b => b.Y).ToList();
-        var groups = GroupByProximity(sorted, bodyFontSize);
+        // Step 1: Determine reading order via projection-profile algorithm.
+        var ordered = PdfLayoutAnalyzer.AnalyzeReadingOrder(blocks, bodyFontSize);
 
-        var builder = new StringBuilder();
-        foreach (var group in groups)
+        // Step 2: Detect captions (indices into ordered list).
+        var captionIndices = PdfLayoutAnalyzer.DetectCaptions(ordered, bodyFontSize);
+
+        // Step 3: Detect list ranges (indices into ordered list).
+        var listRanges = PdfLayoutAnalyzer.DetectLists(ordered);
+
+        // Step 3b: Detect table among text blocks.
+        var textBlocks = ordered.OfType<PdfTextBlock>().ToList();
+        var textBlockIndices = new List<int>();
+        for (var i = 0; i < ordered.Count; i++)
         {
-            var markdown = RenderGroup(group, bodyFontSize, assetDirName);
-            if (string.IsNullOrWhiteSpace(markdown))
+            if (ordered[i] is PdfTextBlock)
+            {
+                textBlockIndices.Add(i);
+            }
+        }
+
+        var (tableTextStart, tableTextLength, tableMarkdown) = DetectTable(textBlocks);
+        var tableStartIndex = tableMarkdown is not null ? textBlockIndices[tableTextStart] : -1;
+        var tableEndIndex = tableMarkdown is not null ? textBlockIndices[tableTextStart + tableTextLength - 1] : -1;
+
+        // Step 4: Render each block in reading order.
+        var builder = new StringBuilder();
+        var tableEmitted = false;
+
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            var block = ordered[i];
+
+            // Skip headers/footers entirely.
+            if (block.IsHeaderFooter)
+            {
+                continue;
+            }
+
+            // Skip individual text blocks that are part of a detected table.
+            if (tableMarkdown is not null && i >= tableStartIndex && i <= tableEndIndex)
+            {
+                // Emit the full table markdown once at the first table row.
+                if (!tableEmitted)
+                {
+                    tableEmitted = true;
+                    if (builder.Length > 0)
+                    {
+                        builder.AppendLine();
+                        builder.AppendLine();
+                    }
+                    builder.Append(tableMarkdown);
+                }
+                continue;
+            }
+
+            var rendered = block switch
+            {
+                PdfImageBlock image => RenderImage(image, assetDirName),
+                PdfTextBlock text => RenderText(
+                    text, i, bodyFontSize, captionIndices, listRanges),
+                _ => null
+            };
+
+            if (rendered is null)
             {
                 continue;
             }
@@ -35,94 +91,70 @@ internal static class PdfContentGrouper
                 builder.AppendLine();
             }
 
-            builder.Append(markdown);
+            builder.Append(rendered);
         }
 
         return builder.ToString();
     }
 
-    internal static List<List<PdfContentBlock>> GroupByProximity(
-        List<PdfContentBlock> sorted,
-        double bodyFontSize)
+    private static string RenderImage(PdfImageBlock image, string? assetDirName)
     {
-        if (sorted.Count == 0) return [];
-
-        var threshold = bodyFontSize * 1.5;
-        var groups = new List<List<PdfContentBlock>>();
-        var currentGroup = new List<PdfContentBlock> { sorted[0] };
-        var groupTop = sorted[0].Top;
-        var groupBottom = sorted[0].Bottom;
-
-        for (var i = 1; i < sorted.Count; i++)
-        {
-            var block = sorted[i];
-            // Gap: current group's lowest Y vs next block's highest Y
-            var gap = groupBottom - block.Top;
-
-            if (gap > -threshold)
-            {
-                currentGroup.Add(block);
-                groupTop = Math.Max(groupTop, block.Top);
-                groupBottom = Math.Min(groupBottom, block.Bottom);
-            }
-            else
-            {
-                groups.Add(currentGroup);
-                currentGroup = [block];
-                groupTop = block.Top;
-                groupBottom = block.Bottom;
-            }
-        }
-
-        groups.Add(currentGroup);
-        return groups;
+        var imagePath = string.IsNullOrEmpty(assetDirName)
+            ? $"./{image.FileName}"
+            : $"./{assetDirName}/{image.FileName}";
+        return $"![image]({imagePath})";
     }
 
-    internal static string RenderGroup(List<PdfContentBlock> group, double bodyFontSize, string? assetDirName = null)
+    private static string RenderText(
+        PdfTextBlock text,
+        int index,
+        double bodyFontSize,
+        HashSet<int> captionIndices,
+        List<(int Start, int Length)> listRanges)
     {
-        var images = group.OfType<PdfImageBlock>().ToList();
-        var texts = group.OfType<PdfTextBlock>().ToList();
-        var parts = new List<string>();
-
-        // Images first — prefix with asset directory name if provided
-        foreach (var image in images)
+        // Caption: italic text.
+        if (captionIndices.Contains(index))
         {
-            var imagePath = string.IsNullOrEmpty(assetDirName)
-                ? $"./{image.FileName}"
-                : $"./{assetDirName}/{image.FileName}";
-            parts.Add($"![image]({imagePath})");
+            return $"*{text.Text}*";
         }
 
-        // Check for table pattern among text blocks
-        var (tableStart, tableLength, tableMarkdown) = DetectTableRows(texts);
-
-        // Render text blocks before the table
-        for (var i = 0; i < texts.Count; i++)
+        // List item: strip marker and render as unordered list.
+        if (IsInListRange(index, listRanges))
         {
-            if (tableMarkdown is not null && i >= tableStart && i < tableStart + tableLength)
-            {
-                if (i == tableStart)
-                {
-                    parts.Add(tableMarkdown);
-                }
-                continue;
-            }
-
-            var text = texts[i];
-            var role = PdfTextClassifier.ClassifyRole(text.FontSize, bodyFontSize, text.Text);
-            var rendered = role switch
-            {
-                "heading" => $"## {text.Text}",
-                "caption" => $"*{text.Text}*",
-                _ => text.Text
-            };
-            parts.Add(rendered);
+            return $"- {StripListMarker(text.Text)}";
         }
 
-        return string.Join(Environment.NewLine, parts);
+        // Heading: font-size-based classification.
+        var role = PdfTextClassifier.ClassifyRole(text.FontSize, bodyFontSize, text.Text);
+        if (role == "heading")
+        {
+            return $"## {text.Text}";
+        }
+
+        return text.Text;
     }
 
-    private static (int start, int length, string? markdown) DetectTableRows(List<PdfTextBlock> texts)
+    private static bool IsInListRange(int index, List<(int Start, int Length)> listRanges)
+    {
+        foreach (var range in listRanges)
+        {
+            if (index >= range.Start && index < range.Start + range.Length)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string StripListMarker(string text)
+    {
+        var match = Regex.Match(text, @"^(\d+[.)、]|[•·●◇◆\-–—])\s*(.*)$");
+        return match.Success ? match.Groups[2].Value : text;
+    }
+
+    internal static (int start, int length, string? markdown) DetectTable(
+        List<PdfTextBlock> texts)
     {
         if (texts.Count < 2) return (0, 0, null);
 

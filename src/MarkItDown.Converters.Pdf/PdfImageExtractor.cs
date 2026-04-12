@@ -41,11 +41,15 @@ internal static class PdfImageExtractor
 
             var bounds = pdfImage.Bounds;
             var y = (bounds.Top + bounds.Bottom) / 2.0;
+            var left = bounds.Left;
+            var right = bounds.Right;
 
             blocks.Add(new PdfImageBlock(
                 Y: y,
                 Top: bounds.Top,
                 Bottom: bounds.Bottom,
+                Left: left,
+                Right: right,
                 PageNumber: pageNumber,
                 ImageIndex: i,
                 FileName: saved));

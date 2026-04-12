@@ -29,11 +29,15 @@ internal static class PdfTextClassifier
             var top = row.Max(w => w.BoundingBox.Top);
             var bottom = row.Min(w => w.BoundingBox.Bottom);
             var y = (top + bottom) / 2.0;
+            var left = row.Min(w => w.BoundingBox.Left);
+            var right = row.Max(w => w.BoundingBox.Right);
 
             blocks.Add(new PdfTextBlock(
                 Y: y,
                 Top: top,
                 Bottom: bottom,
+                Left: left,
+                Right: right,
                 Text: text,
                 FontSize: rowFontSize));
         }
