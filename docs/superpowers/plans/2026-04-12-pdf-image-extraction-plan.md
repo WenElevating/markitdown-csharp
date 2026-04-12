@@ -15,7 +15,7 @@
 - `PdfDocument.Open(path)` uses defaults — `ParsingOptions` has no `FilterProvider` property
 - `IPdfImage.TryGetPng(out byte[])` returns PNG byte array
 - `IPdfImage.TryGetBytes(out IReadOnlyList<byte>)` returns decoded bytes as IReadOnlyList
-- `IPdfImage.RawBytes` is `byte[]` — the raw encoded bytes
+- `IPdfImage.RawBytes` is `IReadOnlyList<byte>` — the raw encoded bytes (NOT `byte[]`)
 - `IPdfImage.Bounds` returns `PdfRectangle` with Top/Bottom/Left/Right
 - `Page.Letters` returns `IReadOnlyList<Letter>`, `Letter.FontSize` is `double`
 
@@ -303,12 +303,14 @@ internal static class PdfImageExtractor
 
     /// <summary>
     /// Extracts images from a PDF page, saves them to disk, returns PdfImageBlock records.
+    /// seenHashes is passed across pages for cross-page deduplication.
     /// </summary>
     internal static List<PdfImageBlock> ExtractImages(
         Page page,
         int pageNumber,
         string assetBasePath,
-        double pageArea)
+        double pageArea,
+        Dictionary<string, string> seenHashes)
     {
         var images = page.GetImages().ToList();
         if (images.Count == 0)
@@ -316,7 +318,7 @@ internal static class PdfImageExtractor
             return [];
         }
 
-        var seenHashes = new Dictionary<string, string>();
+        Directory.CreateDirectory(assetBasePath);
         var blocks = new List<PdfImageBlock>();
 
         for (var i = 0; i < images.Count; i++)
@@ -403,7 +405,6 @@ internal static class PdfImageExtractor
 
         var fileName = $"page{pageNumber}_img{imageIndex}{extension}";
         var fullPath = Path.Combine(assetBasePath, fileName);
-        Directory.CreateDirectory(assetBasePath);
         File.WriteAllBytes(fullPath, imageBytes);
 
         seenHashes[hash] = fileName;
@@ -413,24 +414,24 @@ internal static class PdfImageExtractor
     /// <summary>
     /// Attempts to get JPEG bytes from an IPdfImage.
     /// Checks RawBytes first (may be the original JPEG), then TryGetBytes as fallback.
+    /// Note: RawBytes is IReadOnlyList&lt;byte&gt;, TryGetBytes is on IPdfImage interface directly.
     /// </summary>
     private static bool TryGetJpegBytes(IPdfImage image, out byte[] bytes)
     {
-        // RawBytes may be the original JPEG file bytes
+        // RawBytes is IReadOnlyList<byte> — check JPEG magic bytes via indexing
         var raw = image.RawBytes;
-        if (raw is not null && raw.Length >= 2 && raw[0] == 0xFF && raw[1] == 0xD8)
+        if (raw is not null && raw.Count >= 2 && raw[0] == 0xFF && raw[1] == 0xD8)
         {
-            bytes = raw;
+            bytes = raw.ToArray();
             return true;
         }
 
-        // TryGetBytes returns IReadOnlyList<byte> — convert to array
-        if (image is InlineImage inline && inline.TryGetBytes(out var decoded))
+        // TryGetBytes is on IPdfImage interface (not just InlineImage)
+        if (image.TryGetBytes(out var decoded))
         {
-            var arr = decoded.ToArray();
-            if (arr.Length >= 2 && arr[0] == 0xFF && arr[1] == 0xD8)
+            if (decoded.Count >= 2 && decoded[0] == 0xFF && decoded[1] == 0xD8)
             {
-                bytes = arr;
+                bytes = decoded.ToArray();
                 return true;
             }
         }
@@ -441,7 +442,7 @@ internal static class PdfImageExtractor
 }
 ```
 
-Note: `IPdfImage.RawBytes` is `byte[]` — the original encoded bytes. For JPEGs this is the complete JPEG file. `TryGetBytes` on `InlineImage` returns `IReadOnlyList<byte>` — converted via `.ToArray()`. The `InlineImage` cast is needed because `TryGetBytes` is defined on `InlineImage`, not on the `IPdfImage` interface. If the concrete type is `XObjectImage`, `RawBytes` still works for JPEG detection.
+Note: `IPdfImage.RawBytes` is `IReadOnlyList<byte>` — use `.Count` and indexing for checks, `.ToArray()` when `byte[]` is needed. `TryGetBytes(out IReadOnlyList<byte>)` is on the `IPdfImage` interface directly — no cast needed.
 
 - [ ] **Step 2: Build to verify compilation**
 
@@ -708,6 +709,7 @@ public sealed class PdfConverter : BaseConverter
             var assetBasePath = request.AssetBasePath;
             var pageMarkdowns = new List<string>();
             double? bodyFontSize = null;
+            var seenHashes = new Dictionary<string, string>(); // Cross-page image deduplication
 
             for (var pageIndex = 0; pageIndex < pages.Count; pageIndex++)
             {
@@ -731,7 +733,7 @@ public sealed class PdfConverter : BaseConverter
                 if (assetBasePath is not null)
                 {
                     imageBlocks = PdfImageExtractor.ExtractImages(
-                        page, pageNumber, assetBasePath, pageArea);
+                        page, pageNumber, assetBasePath, pageArea, seenHashes);
                 }
 
                 // Merge and render this page
