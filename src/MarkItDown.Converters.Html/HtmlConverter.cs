@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using HtmlAgilityPack;
 using MarkItDown.Core;
 using System.Net;
@@ -11,6 +12,14 @@ public sealed class HtmlConverter : BaseConverter
     [
         "article", "body", "div", "header", "main", "section"
     ];
+
+    private static readonly Regex NoiseClassPattern = new(
+        @"(^|\s)(sidebar|navbar|tableOfContents|pagination|announcementBar|searchBar)(-|\s|$)",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private static readonly Regex NoiseIdPattern = new(
+        @"^(sidebar|footer|navbar)",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     public override IReadOnlySet<string> SupportedExtensions { get; } =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".html", ".htm" };
@@ -58,23 +67,36 @@ public sealed class HtmlConverter : BaseConverter
         var noiseNodes = document.DocumentNode.SelectNodes("//script|//style|//noscript|//svg|//iframe");
         if (noiseNodes is not null)
         {
-            foreach (var node in noiseNodes)
+            foreach (var node in noiseNodes.ToList())
             {
                 node.Remove();
             }
         }
 
-        var structuralNoise = document.DocumentNode.SelectNodes(
-            "//nav|//aside|//footer|//*[@aria-label='Main']|//*[contains(concat(' ',normalize-space(@class),' '),' sidebar ')]|//*[contains(concat(' ',normalize-space(@class),' '),' navbar ')]|//*[contains(concat(' ',normalize-space(@class),' '),' tableOfContents ')]|//*[contains(concat(' ',normalize-space(@class),' '),' pagination ')]|//*[contains(concat(' ',normalize-space(@class),' '),' announcementBar ')]|//*[contains(concat(' ',normalize-space(@class),' '),' searchBar ')]|//*[contains(@id,'sidebar')]|//*[contains(@id,'footer')]|//*[contains(@id,'navbar')]");
+        var structuralTags = document.DocumentNode.SelectNodes("//nav|//aside|//footer");
+        if (structuralTags is not null)
+        {
+            foreach (var node in structuralTags.ToList())
+            {
+                node.Remove();
+            }
+        }
 
-        if (structuralNoise is null)
+        var candidates = document.DocumentNode.SelectNodes("//*[@class or @id]");
+        if (candidates is null)
         {
             return;
         }
 
-        foreach (var node in structuralNoise)
+        foreach (var node in candidates.ToList())
         {
-            node.Remove();
+            var cls = node.GetAttributeValue("class", "");
+            var id = node.GetAttributeValue("id", "");
+
+            if (NoiseClassPattern.IsMatch(cls) || NoiseIdPattern.IsMatch(id))
+            {
+                node.Remove();
+            }
         }
     }
 
