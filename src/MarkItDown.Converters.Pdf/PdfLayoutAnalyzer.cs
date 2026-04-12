@@ -323,6 +323,84 @@ internal static class PdfLayoutAnalyzer
         return captionIndices;
     }
 
+    /// <summary>
+    /// Merges consecutive body-text blocks into paragraphs when they share
+    /// the same font size, similar left alignment, and small vertical gap.
+    /// </summary>
+    internal static List<PdfContentBlock> MergeParagraphs(
+        List<PdfContentBlock> blocks,
+        double bodyFontSize)
+    {
+        if (blocks.Count == 0) return [];
+
+        var result = new List<PdfContentBlock>();
+        var maxGap = bodyFontSize * 1.2;
+        var fontSizeTolerance = 0.5;
+        var alignmentTolerance = 5.0;
+
+        PdfTextBlock? currentParagraph = null;
+
+        for (var i = 0; i < blocks.Count; i++)
+        {
+            var block = blocks[i];
+
+            if (block is PdfImageBlock)
+            {
+                if (currentParagraph is not null)
+                {
+                    result.Add(currentParagraph);
+                    currentParagraph = null;
+                }
+                result.Add(block);
+                continue;
+            }
+
+            if (block is not PdfTextBlock text)
+            {
+                if (currentParagraph is not null)
+                {
+                    result.Add(currentParagraph);
+                    currentParagraph = null;
+                }
+                result.Add(block);
+                continue;
+            }
+
+            if (currentParagraph is null)
+            {
+                currentParagraph = text;
+                continue;
+            }
+
+            var sameFontSize = Math.Abs(currentParagraph.FontSize - text.FontSize) < fontSizeTolerance;
+            var smallGap = currentParagraph.Bottom - text.Top < maxGap && currentParagraph.Bottom > text.Top;
+            var sameAlignment = Math.Abs(currentParagraph.Left - text.Left) < alignmentTolerance;
+
+            if (sameFontSize && smallGap && sameAlignment)
+            {
+                currentParagraph = currentParagraph with
+                {
+                    Text = $"{currentParagraph.Text} {text.Text}",
+                    Bottom = text.Bottom,
+                    Y = (currentParagraph.Top + text.Bottom) / 2.0,
+                    Right = Math.Max(currentParagraph.Right, text.Right)
+                };
+            }
+            else
+            {
+                result.Add(currentParagraph);
+                currentParagraph = text;
+            }
+        }
+
+        if (currentParagraph is not null)
+        {
+            result.Add(currentParagraph);
+        }
+
+        return result;
+    }
+
     private static readonly Regex NumberedListPattern = new(@"^\d+[.)、]\s", RegexOptions.Compiled);
     private static readonly Regex BulletedListPattern = new(@"^[•·●◇◆\-–—]\s", RegexOptions.Compiled);
 

@@ -223,4 +223,83 @@ public sealed class PdfLayoutAnalyzerTests
         var lists = PdfLayoutAnalyzer.DetectLists(blocks);
         Assert.Empty(lists);
     }
+
+    [Fact]
+    public void MergeParagraphs_ConsecutiveSameFont_Merges()
+    {
+        var blocks = new List<PdfContentBlock>
+        {
+            Txt(700, 680, 50, 400, "First line of paragraph.", 12.0),
+            Txt(675, 655, 50, 400, "Second line of same paragraph.", 12.0),
+            Txt(650, 630, 50, 400, "Third line.", 12.0),
+        };
+
+        var result = PdfLayoutAnalyzer.MergeParagraphs(blocks, 12.0);
+
+        Assert.Single(result);
+        var merged = (PdfTextBlock)result[0];
+        Assert.Equal("First line of paragraph. Second line of same paragraph. Third line.", merged.Text);
+        Assert.Equal(700, merged.Top);
+        Assert.Equal(630, merged.Bottom);
+    }
+
+    [Fact]
+    public void MergeParagraphs_DifferentFontSize_NoMerge()
+    {
+        var blocks = new List<PdfContentBlock>
+        {
+            Txt(700, 680, 50, 400, "Heading text", 18.0),
+            Txt(660, 640, 50, 400, "Body text", 12.0),
+        };
+
+        var result = PdfLayoutAnalyzer.MergeParagraphs(blocks, 12.0);
+        Assert.Equal(2, result.Count);
+    }
+
+    [Fact]
+    public void MergeParagraphs_LargeGap_NoMerge()
+    {
+        var blocks = new List<PdfContentBlock>
+        {
+            Txt(700, 680, 50, 400, "First paragraph.", 12.0),
+            Txt(600, 580, 50, 400, "Second paragraph after gap.", 12.0),
+        };
+
+        var result = PdfLayoutAnalyzer.MergeParagraphs(blocks, 12.0);
+        Assert.Equal(2, result.Count);
+    }
+
+    [Fact]
+    public void MergeParagraphs_ImageBlock_BreaksMerge()
+    {
+        var blocks = new List<PdfContentBlock>
+        {
+            Txt(700, 680, 50, 400, "Text before image.", 12.0),
+            Img(660, 600, 50, 400),
+            Txt(580, 560, 50, 400, "Text after image.", 12.0),
+        };
+
+        var result = PdfLayoutAnalyzer.MergeParagraphs(blocks, 12.0);
+        Assert.Equal(3, result.Count);
+    }
+
+    [Fact]
+    public void MergeParagraphs_DifferentAlignment_NoMerge()
+    {
+        var blocks = new List<PdfContentBlock>
+        {
+            Txt(700, 680, 50, 400, "Left aligned text.", 12.0),
+            Txt(675, 655, 200, 500, "Indented text.", 12.0),
+        };
+
+        var result = PdfLayoutAnalyzer.MergeParagraphs(blocks, 12.0);
+        Assert.Equal(2, result.Count);
+    }
+
+    [Fact]
+    public void MergeParagraphs_EmptyInput_ReturnsEmpty()
+    {
+        var result = PdfLayoutAnalyzer.MergeParagraphs([], 12.0);
+        Assert.Empty(result);
+    }
 }
