@@ -82,6 +82,12 @@ public sealed class PdfConverter : BaseConverter
                     .Concat(imageBlocks.Cast<PdfContentBlock>())
                     .ToList();
 
+                // Skip TOC pages (unless it's the only content page).
+                if (pages.Count > 1 && PdfLayoutAnalyzer.IsTocPage(allBlocks))
+                {
+                    continue;
+                }
+
                 var pageMarkdown = PdfContentGrouper.RenderPage(allBlocks, fontSize, assetDirName);
 
                 if (!string.IsNullOrWhiteSpace(pageMarkdown))

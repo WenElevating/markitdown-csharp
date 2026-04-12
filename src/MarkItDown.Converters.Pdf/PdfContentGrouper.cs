@@ -20,6 +20,9 @@ internal static class PdfContentGrouper
         // Step 1: Determine reading order via projection-profile algorithm.
         var ordered = PdfLayoutAnalyzer.AnalyzeReadingOrder(blocks, bodyFontSize);
 
+        // Merge consecutive body paragraphs.
+        ordered = PdfLayoutAnalyzer.MergeParagraphs(ordered, bodyFontSize);
+
         // Step 2: Detect captions (indices into ordered list).
         var captionIndices = PdfLayoutAnalyzer.DetectCaptions(ordered, bodyFontSize);
 
