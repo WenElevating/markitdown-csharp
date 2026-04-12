@@ -83,6 +83,43 @@ public sealed class PdfConverterTests
     }
 
     [Fact]
+    public async Task ConvertAsync_ImagePathsIncludeAssetDirName()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"pdf-test-{Guid.NewGuid():N}");
+        try
+        {
+            var assetPath = Path.Combine(tempDir, "PuYu_files");
+            var result = await _converter.ConvertAsync(
+                new DocumentConversionRequest
+                {
+                    FilePath = FixturePath.For("sample.pdf"),
+                    AssetBasePath = assetPath
+                });
+
+            Assert.False(string.IsNullOrWhiteSpace(result.Markdown));
+
+            // If any image references exist, they must include the subdirectory name
+            var imageLines = result.Markdown.Split('\n')
+                .Where(l => l.Contains("![image]"))
+                .ToList();
+
+            // sample.pdf may not have images — when images ARE present,
+            // their paths must include the asset directory name
+            foreach (var line in imageLines)
+            {
+                Assert.Contains("PuYu_files/", line);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task ConvertAsync_WithoutAssetBasePath_ProducesTextOnly()
     {
         var result = await _converter.ConvertAsync(
@@ -90,5 +127,33 @@ public sealed class PdfConverterTests
 
         Assert.Null(result.AssetDirectory);
         Assert.False(string.IsNullOrWhiteSpace(result.Markdown));
+    }
+
+    [Fact]
+    public void RenderPage_ImagePathIncludesAssetDirName()
+    {
+        var blocks = new List<PdfContentBlock>
+        {
+            new PdfImageBlock(700, 720, 680, 1, 0, "page1_img0.png"),
+            new PdfTextBlock(650, 660, 640, "Some text", 12.0),
+        };
+
+        var markdown = PdfContentGrouper.RenderPage(blocks, 12.0, "PuYu_files");
+
+        Assert.Contains("![image](./PuYu_files/page1_img0.png)", markdown);
+        Assert.DoesNotContain("![image](./page1_img0.png)", markdown);
+    }
+
+    [Fact]
+    public void RenderPage_ImagePathWithoutAssetDirName_NoPrefix()
+    {
+        var blocks = new List<PdfContentBlock>
+        {
+            new PdfImageBlock(700, 720, 680, 1, 0, "page1_img0.png"),
+        };
+
+        var markdown = PdfContentGrouper.RenderPage(blocks, 12.0);
+
+        Assert.Contains("![image](./page1_img0.png)", markdown);
     }
 }

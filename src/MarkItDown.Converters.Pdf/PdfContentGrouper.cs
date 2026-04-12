@@ -9,7 +9,8 @@ internal static class PdfContentGrouper
 
     internal static string RenderPage(
         List<PdfContentBlock> blocks,
-        double bodyFontSize)
+        double bodyFontSize,
+        string? assetDirName = null)
     {
         if (blocks.Count == 0)
         {
@@ -22,7 +23,7 @@ internal static class PdfContentGrouper
         var builder = new StringBuilder();
         foreach (var group in groups)
         {
-            var markdown = RenderGroup(group, bodyFontSize);
+            var markdown = RenderGroup(group, bodyFontSize, assetDirName);
             if (string.IsNullOrWhiteSpace(markdown))
             {
                 continue;
@@ -77,16 +78,19 @@ internal static class PdfContentGrouper
         return groups;
     }
 
-    internal static string RenderGroup(List<PdfContentBlock> group, double bodyFontSize)
+    internal static string RenderGroup(List<PdfContentBlock> group, double bodyFontSize, string? assetDirName = null)
     {
         var images = group.OfType<PdfImageBlock>().ToList();
         var texts = group.OfType<PdfTextBlock>().ToList();
         var parts = new List<string>();
 
-        // Images first
+        // Images first — prefix with asset directory name if provided
         foreach (var image in images)
         {
-            parts.Add($"![image](./{image.FileName})");
+            var imagePath = string.IsNullOrEmpty(assetDirName)
+                ? $"./{image.FileName}"
+                : $"./{assetDirName}/{image.FileName}";
+            parts.Add($"![image]({imagePath})");
         }
 
         // Check for table pattern among text blocks

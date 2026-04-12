@@ -61,7 +61,10 @@ public sealed class PdfConverter : BaseConverter
                     .ToList();
 
                 var fontSize = bodyFontSize ?? 12.0;
-                var pageMarkdown = PdfContentGrouper.RenderPage(allBlocks, fontSize);
+                var assetDirName = assetBasePath is not null
+                    ? Path.GetFileName(assetBasePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+                    : null;
+                var pageMarkdown = PdfContentGrouper.RenderPage(allBlocks, fontSize, assetDirName);
 
                 if (!string.IsNullOrWhiteSpace(pageMarkdown))
                 {

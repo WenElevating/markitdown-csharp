@@ -5,6 +5,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="MarkItDown.Converters.Pdf.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="UglyToad.PdfPig" Version="1.7.0-custom-5" />
   </ItemGroup>
   <ItemGroup>
