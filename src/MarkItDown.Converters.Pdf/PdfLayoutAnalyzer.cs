@@ -10,6 +10,9 @@ namespace MarkItDown.Converters.Pdf;
 /// </summary>
 internal static class PdfLayoutAnalyzer
 {
+    private static readonly Regex TocPageNumberPattern = new(@"[\.…]+\s*\d+\s*$|\s{3,}\d+\s*$", RegexOptions.Compiled);
+    private static readonly Regex RomanPageNumberPattern = new(@"^[ivxlc]+$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
     /// <summary>
     /// Fraction of page width above which an element is considered "full-width"
     /// and should be extracted into its own row rather than merged into a column.
@@ -280,6 +283,12 @@ internal static class PdfLayoutAnalyzer
                 if (pageNumberPattern.IsMatch(text.Text.Trim()))
                     shouldMark = true;
 
+                // Roman numeral page numbers (iv, viii, xii, etc.)
+                if (RomanPageNumberPattern.IsMatch(text.Text.Trim()) && text.Text.Trim().Length <= 5)
+                {
+                    shouldMark = true;
+                }
+
                 if (shouldMark)
                     pageBlocks[i] = text with { IsHeaderFooter = true };
             }
@@ -441,5 +450,22 @@ internal static class PdfLayoutAnalyzer
             lists.Add((currentStart, currentLength));
 
         return lists;
+    }
+
+    /// <summary>
+    /// Detects whether a page is a Table of Contents.
+    /// A TOC page has > 50% of text lines ending with page number patterns.
+    /// </summary>
+    internal static bool IsTocPage(List<PdfContentBlock> blocks)
+    {
+        if (blocks.Count == 0) return false;
+
+        var textBlocks = blocks.OfType<PdfTextBlock>().ToList();
+        if (textBlocks.Count < 3) return false;
+
+        var linesWithPageNumbers = textBlocks.Count(t => TocPageNumberPattern.IsMatch(t.Text.Trim()));
+        var ratio = (double)linesWithPageNumbers / textBlocks.Count;
+
+        return ratio > 0.5;
     }
 }

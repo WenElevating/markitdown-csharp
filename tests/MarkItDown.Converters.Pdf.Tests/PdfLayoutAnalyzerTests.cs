@@ -302,4 +302,53 @@ public sealed class PdfLayoutAnalyzerTests
         var result = PdfLayoutAnalyzer.MergeParagraphs([], 12.0);
         Assert.Empty(result);
     }
+
+    [Fact]
+    public void IsTocPage_MostlyPageNumbers_ReturnsTrue()
+    {
+        var blocks = new List<PdfContentBlock>
+        {
+            Txt(700, 680, 50, 500, "Chapter 1 Introduction....... 1", 10),
+            Txt(670, 650, 50, 500, "Chapter 2 Getting Started..... 15", 10),
+            Txt(640, 620, 50, 500, "Chapter 3 Advanced Topics...... 33", 10),
+            Txt(610, 590, 50, 500, "Chapter 4 API Reference........ 47", 10),
+        };
+
+        Assert.True(PdfLayoutAnalyzer.IsTocPage(blocks));
+    }
+
+    [Fact]
+    public void IsTocPage_NormalContent_ReturnsFalse()
+    {
+        var blocks = new List<PdfContentBlock>
+        {
+            Txt(700, 680, 50, 500, "This is a normal paragraph with regular body text content.", 12),
+            Txt(660, 640, 50, 500, "Another paragraph of normal content without page numbers.", 12),
+            Txt(620, 600, 50, 500, "More body text that continues the discussion.", 12),
+        };
+
+        Assert.False(PdfLayoutAnalyzer.IsTocPage(blocks));
+    }
+
+    [Fact]
+    public void IsTocPage_EmptyPage_ReturnsFalse()
+    {
+        Assert.False(PdfLayoutAnalyzer.IsTocPage([]));
+    }
+
+    [Fact]
+    public void DetectHeadersFooters_RomanPageNumber_Marked()
+    {
+        var pageHeight = 800.0;
+        var page = new List<PdfContentBlock>
+        {
+            Txt(10, 5, 350, 450, "iv", 10),
+            Txt(700, 680, 50, 500, "Content"),
+        };
+        var allPages = new List<List<PdfContentBlock>> { page };
+
+        PdfLayoutAnalyzer.DetectHeadersFooters(allPages, pageHeight);
+
+        Assert.True(((PdfTextBlock)page[0]).IsHeaderFooter);
+    }
 }
