@@ -14,6 +14,9 @@ obj/
 *.user
 *.suo
 
+## NuGet packaging output
+artifacts/
+
 ## Temp files
 tmp-*.md
 *.log

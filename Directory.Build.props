@@ -1,0 +1,16 @@
+<Project>
+  <PropertyGroup>
+    <Authors>WenElevating</Authors>
+    <RepositoryUrl>https://github.com/WenElevating/markitdown-csharp</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/WenElevating/markitdown-csharp</PackageProjectUrl>
+    <PackageTags>markdown;converter;pdf;html;docx</PackageTags>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>CS1591</NoWarn>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+  </PropertyGroup>
+</Project>
