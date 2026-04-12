@@ -156,4 +156,16 @@ public sealed class PdfConverterTests
 
         Assert.Contains("![image](./page1_img0.png)", markdown);
     }
+
+    [Fact]
+    public async Task ConvertAsync_MultiPagePdf_UsesPageSeparator()
+    {
+        var result = await _converter.ConvertAsync(
+            new DocumentConversionRequest { FilePath = FixturePath.For("table.pdf") });
+
+        Assert.False(string.IsNullOrWhiteSpace(result.Markdown));
+
+        // Multi-page PDFs should use --- (thematic break) as page separator
+        Assert.Contains($"{Environment.NewLine}---{Environment.NewLine}", result.Markdown);
+    }
 }
