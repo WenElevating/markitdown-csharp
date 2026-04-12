@@ -6,7 +6,11 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="System.CommandLine" Version="2.0.5" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\MarkItDown.Core\MarkItDown.Core.csproj" />
+    <ProjectReference Include="..\MarkItDown.Llm\MarkItDown.Llm.csproj" />
     <ProjectReference Include="..\MarkItDown.Converters.Html\MarkItDown.Converters.Html.csproj" />
     <ProjectReference Include="..\MarkItDown.Converters.Pdf\MarkItDown.Converters.Pdf.csproj" />
     <ProjectReference Include="..\MarkItDown.Converters.Office\MarkItDown.Converters.Office.csproj" />
