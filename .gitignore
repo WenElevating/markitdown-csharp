@@ -28,3 +28,4 @@ Thumbs.db
 
 ## Worktrees (isolated workspaces)
 .worktrees/
+/.claude
