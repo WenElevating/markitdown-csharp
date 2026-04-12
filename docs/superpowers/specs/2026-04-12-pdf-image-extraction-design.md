@@ -15,41 +15,51 @@ The current `PdfConverter` only extracts text from PDFs via `page.GetWords()` an
 
 ## Design
 
+### Architectural Decision: Image Output Path
+
+The converter needs to know where to write image files. Two approaches were considered:
+
+1. **Pass output path into converter** — add `AssetBasePath` to `DocumentConversionRequest`
+2. **Return image data from converter** — converter returns bytes, CLI handles file I/O
+
+**Chosen: Option 1 — `AssetBasePath` on the request.** Reason: the converter already does file I/O (opens the PDF from `FilePath`). Adding one more path field is consistent with the existing pattern. The CLI knows the output location and passes it through. When `AssetBasePath` is null (stream-only input), image extraction is skipped and only text is produced.
+
+```csharp
+// DocumentConversionRequest addition
+public string? AssetBasePath { get; init; }  // e.g. "output_files/" or null to skip images
+```
+
+CLI sets this field:
+- `-o output.md` → `AssetBasePath = Path.GetDirectoryName(outputPath) + "/" + stem + "_files"`
+- stdout mode → `AssetBasePath = input directory + "/" + input_stem + "_files"`
+
+**Stream-only input** (no `FilePath`): image extraction is skipped. Only text is extracted. This covers MCP server and programmatic API usage.
+
 ### Content Block Model
 
-Replace the text-only extraction with a unified content block model. Each page produces an ordered list of blocks sorted by vertical position.
+Replace the text-only extraction with a unified content block model. Each page produces an ordered list of blocks.
 
 ```
 PdfPage → [TextBlock, ImageBlock, TextBlock, ImageBlock, ...]
                 ↓ grouped by spatial proximity
               [Group1, Group2, Group3, ...]
                 ↓ group-internal order: image first, then text
-                ↓ group-external order: by Y coordinate
+                ↓ group-external order: by Y coordinate (descending, PDF Y increases upward)
               Markdown output
 ```
 
-**Types:**
+**Types** (records, per project convention for immutable data models):
 
 ```csharp
-internal abstract class PdfContentBlock
-{
-    public required double Y { get; init; }
-    public required double Top { get; init; }
-    public required double Bottom { get; init; }
-}
+internal abstract record PdfContentBlock(double Y, double Top, double Bottom);
 
-internal sealed class PdfTextBlock : PdfContentBlock
-{
-    public required string Text { get; init; }
-    public required double FontSize { get; init; }
-}
+internal sealed record PdfTextBlock(
+    double Y, double Top, double Bottom,
+    string Text, double FontSize) : PdfContentBlock(Y, Top, Bottom);
 
-internal sealed class PdfImageBlock : PdfContentBlock
-{
-    public required int PageNumber { get; init; }
-    public required int ImageIndex { get; init; }
-    public required string FilePath { get; init; }
-}
+internal sealed record PdfImageBlock(
+    double Y, double Top, double Bottom,
+    int PageNumber, int ImageIndex, string FilePath) : PdfContentBlock(Y, Top, Bottom);
 ```
 
 ### Spatial Grouping
@@ -60,10 +70,14 @@ Blocks that overlap or are adjacent in Y space are grouped into a logical unit:
 2. **Caption below image** — text Y is slightly below image bottom, X range overlaps → group as figure with caption (`![...](path)\n*caption text*`)
 3. **Independent** — no spatial relationship → separate groups
 
-Grouping algorithm:
-- Sort all blocks by Y coordinate
-- Iterate and merge: if next block's Top overlaps current group's Bottom (within a threshold), merge into same group
+**Y-coordinate convention:** PDF coordinates have origin at bottom-left (Y increases upward). `Top` and `Bottom` use PDF-native space. Sort **descending by Y** for reading order (top of page = highest Y value).
+
+**Grouping algorithm:**
+- Sort all blocks by Y coordinate descending (top of page first)
+- Iterate: if next block's Top overlaps current group's Bottom (gap < 1.5x body font size), merge into same group
 - Within each group: image blocks first, then text blocks
+
+**Threshold:** merge if Y gap < 1.5x the page's body font size (the mode font size computed for that page). This adapts to different document scales.
 
 ### Image Extraction
 
@@ -79,21 +93,21 @@ Use PdfPig's `page.GetImages()` API:
 **Image filtering:**
 - Width or height < 20px → discard (decorative lines, bullet icons)
 - Area < 1% of page area → discard (tiny icons)
-- Duplicate images (same byte hash) → save once, reference multiple times
+- Duplicate images (same SHA256 hash on raw bytes) → save once, reference multiple times
 
 ### Text Layout Heuristics
 
 Replace the current `LooksLikeHeading` heuristic with font-size-based detection:
 
 1. Collect all `Letter` objects per page
-2. Compute font size **mode** (most frequent size) = "body baseline"
+2. Round each `Letter.FontSize` to 1 decimal place, then compute font size **mode** (most frequent rounded size) per page = "body baseline"
 3. Classify by ratio to baseline:
-   - Size >= baseline * 1.5 → **heading** → `## text`
+   - Size >= baseline * 1.5 **AND** line length < 40 chars → **heading** → `## text`
+   - Size >= baseline * 1.5 but line length >= 40 chars → **body** (large text, not a heading)
    - Size between baseline * 0.7 and 1.5 → **body** → normal paragraph
    - Size < baseline * 0.7 → **caption/footnote** → `*text*` (italic)
-4. Heading criteria: large font + line length < 40 chars
 
-**Paragraph merging:** Consecutive body-text lines with similar font size are merged into a single paragraph (space-separated).
+**Paragraph merging:** Consecutive body-text lines with similar font size (within 1pt) are merged into a single paragraph (space-separated).
 
 **Table detection:** Retain existing `CollectTableRows` logic. Add Y-coordinate proximity check for multi-column text detection.
 
@@ -113,6 +127,8 @@ Naming: `page{page-number}_img{page-internal-index}.png`, page numbers start at 
 
 **Stdout mode:** When no `-o` is specified, create `{pdf-stem}_files/` in the same directory as the input PDF. Markdown references use relative paths.
 
+**Stream-only mode:** When `FilePath` is null (stream input), image extraction is skipped. Only text is extracted and returned.
+
 ### DocumentConversionResult Extension
 
 ```csharp
@@ -120,9 +136,11 @@ public sealed record DocumentConversionResult(
     string Kind,
     string Markdown,
     string? Title = null,
-    string? AssetDirectory = null  // directory containing extracted images
+    string? AssetDirectory = null  // directory containing extracted images, null if no images
 );
 ```
+
+**Backward compatibility:** The default `null` preserves all existing call sites. All 19 converters in the codebase continue to work without changes. Only `PdfConverter` will set this field.
 
 CLI layer checks `AssetDirectory` after conversion and prints: `Images saved to: {path}/`
 
@@ -140,6 +158,7 @@ New:
 - Missing filter decoder → same, comment placeholder
 - Empty page (no text, no images) → skip
 - Page with only images, no text → output only image references
+- Stream-only input (no FilePath) → skip image extraction, text-only output
 
 ### Out of Scope
 
@@ -153,19 +172,28 @@ New:
 
 | File | Change |
 |------|--------|
-| `src/MarkItDown.Core/DocumentConversionResult.cs` | Add `AssetDirectory` field |
+| `src/MarkItDown.Core/DocumentConversionRequest.cs` | Add `AssetBasePath` property |
+| `src/MarkItDown.Core/DocumentConversionResult.cs` | Add `AssetDirectory` field (default null, backward compatible) |
 | `src/MarkItDown.Converters.Pdf/PdfConverter.cs` | Major refactor: content block model, image extraction, spatial grouping, font-size layout |
-| `src/MarkItDown.Cli/CliRunner.cs` | Print asset directory info after conversion |
+| `src/MarkItDown.Cli/CliRunner.cs` | Set `AssetBasePath` on request, print asset directory info after conversion |
 | `tests/MarkItDown.Converters.Pdf.Tests/PdfConverterTests.cs` | Add image extraction tests, layout tests |
+
+**Note on backward compatibility:** The `AssetDirectory` field defaults to `null`. All existing converters across all projects (Html, Pdf, Office, Data, Media, Web) continue to compile and run without modification.
 
 ## Test Strategy
 
-- Unit tests with a fixture PDF containing text + images
+- **Fixture PDF:** Create a 3-page test PDF:
+  - Page 1: heading (large font) + body text (normal font) — tests font-size classification
+  - Page 2: embedded PNG image with a caption line below (small font) — tests image extraction, spatial grouping, caption detection
+  - Page 3: text overlaid on an image + a small icon (< 20px) — tests text-on-image grouping and small-image filtering
+
 - Test: images extracted and saved to correct directory
 - Test: Markdown contains image references at correct positions
 - Test: heading/body/caption classification by font size
+- Test: large-font text >= 40 chars is NOT treated as heading
 - Test: spatial grouping of overlapping text+image
-- Test: small images filtered out
-- Test: duplicate images deduplicated
+- Test: small images (< 20px) filtered out
+- Test: duplicate images deduplicated (same file referenced twice)
 - Test: scanned PDF with images produces image-only output
 - Test: stdout mode creates image directory next to input PDF
+- Test: stream-only input skips image extraction, produces text-only output
