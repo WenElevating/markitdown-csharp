@@ -29,3 +29,4 @@ Thumbs.db
 ## Worktrees (isolated workspaces)
 .worktrees/
 /.claude
+/tests/Fixtures/scanned_files
