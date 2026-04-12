@@ -30,25 +30,47 @@ public sealed class PdfConverter : BaseConverter
             }
 
             var assetBasePath = request.AssetBasePath;
-            var pageMarkdowns = new List<string>();
+            var assetDirName = assetBasePath is not null
+                ? Path.GetFileName(assetBasePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+                : null;
+
+            // --- Pass 1: Extract text blocks from all pages for header/footer detection ---
+            var allPageTextBlocks = new List<List<PdfContentBlock>>();
             double? bodyFontSize = null;
+
+            foreach (var page in pages)
+            {
+                if (bodyFontSize is null && page.Letters.Count > 0)
+                {
+                    bodyFontSize = PdfTextClassifier.ComputeBodyFontSize(page.Letters);
+                }
+
+                var textBlocks = PdfTextClassifier.ClassifyTextBlocks(page)
+                    .Cast<PdfContentBlock>().ToList();
+                allPageTextBlocks.Add(textBlocks);
+            }
+
+            var fontSize = bodyFontSize ?? 12.0;
+
+            // Detect headers/footers across pages
+            var avgPageHeight = pages.Average(p => p.Height);
+            PdfLayoutAnalyzer.DetectHeadersFooters(allPageTextBlocks, avgPageHeight);
+
+            // --- Pass 2: Per-page processing with filtered blocks ---
             var seenHashes = new Dictionary<string, string>();
+            var pageMarkdowns = new List<string>();
 
             for (var pageIndex = 0; pageIndex < pages.Count; pageIndex++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var page = pages[pageIndex];
                 var pageNumber = pageIndex + 1;
-
-                if (bodyFontSize is null && page.Letters.Count > 0)
-                {
-                    bodyFontSize = PdfTextClassifier.ComputeBodyFontSize(page.Letters);
-                }
-
                 var pageArea = page.Width * page.Height;
 
-                var textBlocks = PdfTextClassifier.ClassifyTextBlocks(page);
+                // Get text blocks with header/footer flags from pass 1
+                var textBlocks = allPageTextBlocks[pageIndex];
 
+                // Extract images
                 var imageBlocks = new List<PdfImageBlock>();
                 if (assetBasePath is not null)
                 {
@@ -56,14 +78,10 @@ public sealed class PdfConverter : BaseConverter
                         page, pageNumber, assetBasePath, pageArea, seenHashes);
                 }
 
-                var allBlocks = textBlocks.Cast<PdfContentBlock>()
+                var allBlocks = textBlocks
                     .Concat(imageBlocks.Cast<PdfContentBlock>())
                     .ToList();
 
-                var fontSize = bodyFontSize ?? 12.0;
-                var assetDirName = assetBasePath is not null
-                    ? Path.GetFileName(assetBasePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
-                    : null;
                 var pageMarkdown = PdfContentGrouper.RenderPage(allBlocks, fontSize, assetDirName);
 
                 if (!string.IsNullOrWhiteSpace(pageMarkdown))
@@ -73,7 +91,8 @@ public sealed class PdfConverter : BaseConverter
             }
 
             var markdown = string.Join(
-                $"{Environment.NewLine}{Environment.NewLine}", pageMarkdowns).Trim();
+                $"{Environment.NewLine}{Environment.NewLine}---{Environment.NewLine}{Environment.NewLine}",
+                pageMarkdowns).Trim();
 
             if (string.IsNullOrWhiteSpace(markdown))
             {
