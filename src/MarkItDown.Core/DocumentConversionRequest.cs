@@ -7,4 +7,5 @@ public sealed record DocumentConversionRequest
     public string? Filename { get; init; }
     public string? MimeType { get; init; }
     public ILlmClient? LlmClient { get; init; }
+    public string? AssetBasePath { get; init; }
 }

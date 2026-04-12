@@ -219,7 +219,7 @@ public static class CliRunner
         MarkItDownEngine engine, ILlmClient? llmClient, string inputPath, string? outputPath,
         TextWriter stdout, CancellationToken ct)
     {
-        var request = new DocumentConversionRequest { FilePath = inputPath, LlmClient = llmClient };
+        var request = new DocumentConversionRequest { FilePath = inputPath, LlmClient = llmClient, AssetBasePath = ComputeAssetPath(inputPath, outputPath) };
         var result = await engine.ConvertAsync(request, ct);
 
         if (string.IsNullOrWhiteSpace(outputPath))
@@ -237,13 +237,18 @@ public static class CliRunner
             await stdout.WriteLineAsync($"Converted: {inputPath} -> {Path.GetFullPath(outputPath)}");
         }
 
+        if (!string.IsNullOrWhiteSpace(result.AssetDirectory))
+        {
+            await stdout.WriteLineAsync($"Images saved to: {Path.GetFullPath(result.AssetDirectory)}");
+        }
+
         return 0;
     }
 
     private static async Task<int> ConvertSingleInvokeAsync(
         MarkItDownEngine engine, ILlmClient? llmClient, string inputPath, string? outputPath)
     {
-        var request = new DocumentConversionRequest { FilePath = inputPath, LlmClient = llmClient };
+        var request = new DocumentConversionRequest { FilePath = inputPath, LlmClient = llmClient, AssetBasePath = ComputeAssetPath(inputPath, outputPath) };
         var result = await engine.ConvertAsync(request);
 
         if (string.IsNullOrWhiteSpace(outputPath))
@@ -259,6 +264,11 @@ public static class CliRunner
                 Directory.CreateDirectory(dir);
             await File.WriteAllTextAsync(outputPath, result.Markdown);
             Console.WriteLine($"Converted: {inputPath} -> {Path.GetFullPath(outputPath)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(result.AssetDirectory))
+        {
+            Console.WriteLine($"Images saved to: {Path.GetFullPath(result.AssetDirectory)}");
         }
 
         return 0;
@@ -281,11 +291,12 @@ public static class CliRunner
         {
             try
             {
-                var request = new DocumentConversionRequest { FilePath = inputPath, LlmClient = llmClient };
-                var result = await engine.ConvertAsync(request, ct);
-
                 var name = Path.GetFileNameWithoutExtension(inputPath) + ".md";
                 var outFile = Path.Combine(outputPath!, name);
+
+                var request = new DocumentConversionRequest { FilePath = inputPath, LlmClient = llmClient, AssetBasePath = ComputeAssetPath(inputPath, outFile) };
+                var result = await engine.ConvertAsync(request, ct);
+
                 await File.WriteAllTextAsync(outFile, result.Markdown, ct);
 
                 await stdout.WriteLineAsync($"Converted: {inputPath} -> {outFile}");
@@ -325,11 +336,12 @@ public static class CliRunner
         {
             try
             {
-                var request = new DocumentConversionRequest { FilePath = inputPath, LlmClient = llmClient };
-                var result = await engine.ConvertAsync(request);
-
                 var name = Path.GetFileNameWithoutExtension(inputPath) + ".md";
                 var outFile = Path.Combine(outputPath!, name);
+
+                var request = new DocumentConversionRequest { FilePath = inputPath, LlmClient = llmClient, AssetBasePath = ComputeAssetPath(inputPath, outFile) };
+                var result = await engine.ConvertAsync(request);
+
                 await File.WriteAllTextAsync(outFile, result.Markdown);
 
                 Console.WriteLine($"Converted: {inputPath} -> {outFile}");
@@ -351,6 +363,20 @@ public static class CliRunner
         }
 
         return exitCode;
+    }
+
+    private static string? ComputeAssetPath(string inputPath, string? outputPath)
+    {
+        if (!string.IsNullOrWhiteSpace(outputPath))
+        {
+            var dir = Path.GetDirectoryName(Path.GetFullPath(outputPath));
+            var stem = Path.GetFileNameWithoutExtension(outputPath);
+            return Path.Combine(dir ?? ".", stem + "_files");
+        }
+
+        var inputDir = Path.GetDirectoryName(Path.GetFullPath(inputPath));
+        var inputStem = Path.GetFileNameWithoutExtension(inputPath);
+        return Path.Combine(inputDir ?? ".", inputStem + "_files");
     }
 
     private static string[] GetSupportedFormats() =>
