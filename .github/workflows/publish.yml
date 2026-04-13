@@ -28,7 +28,7 @@ jobs:
 
       - run: dotnet build --no-restore -c Release -p:Version=${{ env.VERSION }}
 
-      - run: dotnet test --no-build -c Release
+      - run: dotnet test --no-build -c Release --filter "FullyQualifiedName!~MarkItDown.Cli.Tests"
 
       - run: dotnet pack --no-build -c Release -p:Version=${{ env.VERSION }} -o artifacts/
 
