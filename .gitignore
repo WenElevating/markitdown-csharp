@@ -33,3 +33,7 @@ Thumbs.db
 .worktrees/
 /.claude
 /tests/Fixtures/scanned_files
+
+## Local research drafts
+docs/research/
+docs/superpowers/specs/2026-04-15-doc-docx-wps-converter-design.md
