@@ -59,6 +59,18 @@ public sealed class BaseConverterTests
     }
 
     [Fact]
+    public void CanConvert_DoesNotMatchMimeTypePrefixOnly()
+    {
+        var request = new DocumentConversionRequest
+        {
+            MimeType = "text/html-malicious",
+            Stream = Stream.Null
+        };
+
+        Assert.False(_converter.CanConvert(request));
+    }
+
+    [Fact]
     public void CanConvert_ReturnsFalseForUnknownExtension()
     {
         var request = new DocumentConversionRequest

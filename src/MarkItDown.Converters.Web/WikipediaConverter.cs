@@ -8,8 +8,6 @@ namespace MarkItDown.Converters.Web;
 
 public sealed class WikipediaConverter : BaseConverter
 {
-    private static readonly HttpClient HttpClient = new();
-
     public override IReadOnlySet<string> SupportedExtensions =>
         new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -38,7 +36,7 @@ public sealed class WikipediaConverter : BaseConverter
             var lang = ExtractLanguageCode(uri);
 
             var apiUrl = $"https://{lang}.wikipedia.org/api/rest_v1/page/html/{Uri.EscapeDataString(title.Replace(' ', '_'))}";
-            var html = await HttpClient.GetStringAsync(apiUrl, cancellationToken);
+            var html = await WebRequestGuard.FetchStringAsync(apiUrl, cancellationToken);
 
             var document = new HtmlDocument();
             document.LoadHtml(html);

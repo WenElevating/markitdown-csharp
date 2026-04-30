@@ -54,6 +54,54 @@ public sealed class ZipConverterTests
         }
     }
 
+    [Fact]
+    public async Task ConvertAsync_RejectsExcessiveContainerDepth()
+    {
+        var path = CreateTestZip();
+
+        try
+        {
+            var exception = await Assert.ThrowsAsync<ConversionException>(() =>
+                _converter.ConvertAsync(new DocumentConversionRequest
+                {
+                    FilePath = path,
+                    ContainerDepth = 3
+                }));
+
+            Assert.Contains("nested archive depth", exception.Message);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task ConvertAsync_RejectsTooManyEntries()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.zip");
+
+        try
+        {
+            using (var zip = ZipFile.Open(path, ZipArchiveMode.Create))
+            {
+                for (var i = 0; i < 1001; i++)
+                {
+                    zip.CreateEntry($"file-{i}.md");
+                }
+            }
+
+            var exception = await Assert.ThrowsAsync<ConversionException>(() =>
+                _converter.ConvertAsync(new DocumentConversionRequest { FilePath = path }));
+
+            Assert.Contains("too many entries", exception.Message);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     private static string CreateTestZip()
     {
         var path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.zip");

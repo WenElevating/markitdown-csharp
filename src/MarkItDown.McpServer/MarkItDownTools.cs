@@ -8,6 +8,7 @@ namespace MarkItDown.McpServer;
 [McpServerToolType]
 public static class MarkItDownTools
 {
+    private const string AllowedRootsEnvironmentVariable = "MARKITDOWN_MCP_ALLOWED_ROOTS";
     private static readonly Lazy<MarkItDownEngine> Engine = new(CreateEngine);
 
     private static MarkItDownEngine CreateEngine()
@@ -41,6 +42,7 @@ public static class MarkItDownTools
     {
         try
         {
+            EnsurePathIsAllowed(path);
             var result = Engine.Value.ConvertAsync(path).GetAwaiter().GetResult();
             return result.Markdown;
         }
@@ -56,5 +58,34 @@ public static class MarkItDownTools
         {
             return $"Error: Conversion failed: {ex.Message}";
         }
+    }
+
+    private static void EnsurePathIsAllowed(string path)
+    {
+        var allowedRoots = GetAllowedRoots();
+        var fullPath = Path.GetFullPath(path);
+        foreach (var root in allowedRoots)
+        {
+            if (FileSystemBoundary.IsPathWithinRoot(fullPath, root))
+            {
+                return;
+            }
+        }
+
+        throw new ConversionException($"Path is outside allowed MCP roots. Set {AllowedRootsEnvironmentVariable} to include this location.");
+    }
+
+    private static List<string> GetAllowedRoots()
+    {
+        var value = Environment.GetEnvironmentVariable(AllowedRootsEnvironmentVariable);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return [FileSystemBoundary.NormalizeRoot(Environment.CurrentDirectory)];
+        }
+
+        return value.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(Path.GetFullPath)
+            .Select(FileSystemBoundary.NormalizeRoot)
+            .ToList();
     }
 }

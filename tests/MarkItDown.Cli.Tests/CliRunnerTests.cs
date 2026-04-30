@@ -57,6 +57,33 @@ public sealed class CliRunnerTests
         Assert.Contains("![image]", result.Stdout);
     }
 
+    [Fact]
+    public async Task Cli_ReturnsErrorForDuplicateMultiFileOutputs()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var firstDir = Path.Combine(tempRoot, "first");
+        var secondDir = Path.Combine(tempRoot, "second");
+        var outputDir = Path.Combine(tempRoot, "out");
+        Directory.CreateDirectory(firstDir);
+        Directory.CreateDirectory(secondDir);
+        var firstFile = Path.Combine(firstDir, "same.md");
+        var secondFile = Path.Combine(secondDir, "same.md");
+        await File.WriteAllTextAsync(firstFile, "# First");
+        await File.WriteAllTextAsync(secondFile, "# Second");
+
+        try
+        {
+            var result = await RunCliAsync(firstFile, secondFile, "-o", outputDir);
+
+            Assert.Equal(1, result.ExitCode);
+            Assert.Contains("same output file", result.Stderr);
+        }
+        finally
+        {
+            Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
     private static async Task<CliResult> RunCliAsync(params string[] args)
     {
         var projectPath = Path.Combine(FixturePath.RepositoryRoot, "src", "MarkItDown.Cli", "MarkItDown.Cli.csproj");

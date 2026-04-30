@@ -19,7 +19,8 @@ public abstract class BaseConverter : IConverter
         {
             foreach (var supported in SupportedMimeTypes)
             {
-                if (mimeType.StartsWith(supported, StringComparison.OrdinalIgnoreCase))
+                var mediaType = mimeType.Split(';', 2)[0].Trim();
+                if (string.Equals(mediaType, supported, StringComparison.OrdinalIgnoreCase))
                 {
                     return true;
                 }

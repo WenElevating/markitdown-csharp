@@ -8,4 +8,5 @@ public sealed record DocumentConversionRequest
     public string? MimeType { get; init; }
     public ILlmClient? LlmClient { get; init; }
     public string? AssetBasePath { get; init; }
+    public int ContainerDepth { get; init; }
 }

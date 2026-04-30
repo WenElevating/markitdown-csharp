@@ -34,4 +34,17 @@ public sealed class WebConverterTests
         var request = new DocumentConversionRequest { FilePath = "document.pdf" };
         Assert.False(_converter.CanConvert(request));
     }
+
+    [Theory]
+    [InlineData("http://127.0.0.1/page")]
+    [InlineData("http://10.0.0.1/page")]
+    [InlineData("http://192.168.0.1/page")]
+    [InlineData("http://169.254.1.1/page")]
+    public async Task ConvertAsync_RejectsPrivateOrLoopbackIpUrls(string url)
+    {
+        var exception = await Assert.ThrowsAsync<ConversionException>(() =>
+            _converter.ConvertAsync(new DocumentConversionRequest { FilePath = url }));
+
+        Assert.Contains("private", exception.Message);
+    }
 }

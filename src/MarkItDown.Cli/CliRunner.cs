@@ -284,6 +284,13 @@ public static class CliRunner
             return 1;
         }
 
+        var duplicateOutput = FindDuplicateOutput(inputPaths, outputPath!);
+        if (duplicateOutput is not null)
+        {
+            await stderr.WriteLineAsync($"Multiple input files would write to the same output file: {duplicateOutput}");
+            return 1;
+        }
+
         Directory.CreateDirectory(outputPath!);
         var exitCode = 0;
 
@@ -291,8 +298,7 @@ public static class CliRunner
         {
             try
             {
-                var name = Path.GetFileNameWithoutExtension(inputPath) + ".md";
-                var outFile = Path.Combine(outputPath!, name);
+                var outFile = FileSystemBoundary.BuildOutputFilePath(inputPath, outputPath!);
 
                 var request = new DocumentConversionRequest { FilePath = inputPath, LlmClient = llmClient, AssetBasePath = ComputeAssetPath(inputPath, outFile) };
                 var result = await engine.ConvertAsync(request, ct);
@@ -329,6 +335,13 @@ public static class CliRunner
             return 1;
         }
 
+        var duplicateOutput = FindDuplicateOutput(inputPaths, outputPath!);
+        if (duplicateOutput is not null)
+        {
+            Console.Error.WriteLine($"Multiple input files would write to the same output file: {duplicateOutput}");
+            return 1;
+        }
+
         Directory.CreateDirectory(outputPath!);
         var exitCode = 0;
 
@@ -336,8 +349,7 @@ public static class CliRunner
         {
             try
             {
-                var name = Path.GetFileNameWithoutExtension(inputPath) + ".md";
-                var outFile = Path.Combine(outputPath!, name);
+                var outFile = FileSystemBoundary.BuildOutputFilePath(inputPath, outputPath!);
 
                 var request = new DocumentConversionRequest { FilePath = inputPath, LlmClient = llmClient, AssetBasePath = ComputeAssetPath(inputPath, outFile) };
                 var result = await engine.ConvertAsync(request);
@@ -377,6 +389,16 @@ public static class CliRunner
         var inputDir = Path.GetDirectoryName(Path.GetFullPath(inputPath));
         var inputStem = Path.GetFileNameWithoutExtension(inputPath);
         return Path.Combine(inputDir ?? ".", inputStem + "_files");
+    }
+
+    private static string BuildOutputFilePath(string inputPath, string outputPath)
+    {
+        return Path.Combine(outputPath, Path.GetFileNameWithoutExtension(inputPath) + ".md");
+    }
+
+    internal static string? FindDuplicateOutput(IEnumerable<string> inputPaths, string outputPath)
+    {
+        return FileSystemBoundary.FindDuplicateOutput(inputPaths, outputPath);
     }
 
     private static string[] GetSupportedFormats() =>

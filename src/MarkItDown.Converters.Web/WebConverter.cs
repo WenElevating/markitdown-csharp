@@ -7,8 +7,6 @@ namespace MarkItDown.Converters.Web;
 
 public sealed class WebConverter : BaseConverter
 {
-    private static readonly HttpClient HttpClient = new();
-
     private static readonly HashSet<string> ContainerTags =
     [
         "article", "body", "div", "header", "main", "section"
@@ -41,7 +39,7 @@ public sealed class WebConverter : BaseConverter
         try
         {
             var url = request.FilePath ?? throw new ConversionException("No URL provided for web conversion.");
-            var html = await HttpClient.GetStringAsync(url, cancellationToken);
+            var html = await WebRequestGuard.FetchStringAsync(url, cancellationToken);
 
             var document = new HtmlDocument();
             document.LoadHtml(html);
