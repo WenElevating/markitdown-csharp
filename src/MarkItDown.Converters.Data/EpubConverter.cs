@@ -55,6 +55,10 @@ public sealed class EpubConverter : BaseConverter
                     var entryPath = string.IsNullOrEmpty(opfDir)
                         ? href : $"{opfDir}/{href}";
 
+                    // Defence-in-depth: reject manifest hrefs that attempt path traversal
+                    if (entryPath.Contains(".."))
+                        continue;
+
                     var entry = archive.GetEntry(entryPath);
                     if (entry is null) continue;
 

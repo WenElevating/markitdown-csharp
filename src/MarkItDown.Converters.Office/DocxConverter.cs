@@ -2,11 +2,21 @@ using System.Text;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 using MarkItDown.Core;
+using NPOI.HWPF; // for HWPFDocument (NPOI.HWPFCore package)
+
+// Note: Encoding.RegisterProvider is called by DocConverter's static ctor.
+// If DocxConverter OLE2 fallback is used independently, we register here too.
 
 namespace MarkItDown.Converters.Office;
 
 public sealed class DocxConverter : BaseConverter
 {
+    static DocxConverter()
+    {
+        // Required for .NET Core/5+: NPOI HWPF OLE2 fallback needs Windows code pages
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+    }
+
     public override IReadOnlySet<string> SupportedExtensions =>
         new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".docx" };
 
@@ -24,6 +34,12 @@ public sealed class DocxConverter : BaseConverter
 
         return await Task.Run(() =>
         {
+            // Read OLE2 magic once; reused in the exception filter to avoid a second file open.
+            var isOle2 = DocRendering.IsOle2File(filePath);
+
+            if (isOle2)
+                return ConvertAsHwpf(filePath, cancellationToken);
+
             try
             {
                 using var doc = WordprocessingDocument.Open(filePath, false);
@@ -48,11 +64,40 @@ public sealed class DocxConverter : BaseConverter
                 return new DocumentConversionResult("Docx", markdown);
             }
             catch (ConversionException) { throw; }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception) when (isOle2)
+            {
+                // Secondary fallback: OpenXml threw but it really is an OLE2 file
+                return ConvertAsHwpf(filePath, cancellationToken);
+            }
             catch (Exception ex)
             {
                 throw new ConversionException($"Failed to convert DOCX: {ex.Message}", ex);
             }
         }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Fallback path: parse an OLE2 binary .doc file using NPOI HWPF.
+    /// Transparent to the caller — still returns a "Docx" kind result.
+    /// </summary>
+    private static DocumentConversionResult ConvertAsHwpf(
+        string filePath, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var doc = new HWPFDocument(fs);
+            var markdown = DocRendering.RenderDocument(doc, cancellationToken);
+            return new DocumentConversionResult("Docx", markdown);
+        }
+        catch (ConversionException) { throw; }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            throw new ConversionException(
+                $"Failed to convert OLE2/WPS DOCX file '{filePath}': {ex.Message}", ex);
+        }
     }
 
     private static string RenderParagraph(Paragraph para)

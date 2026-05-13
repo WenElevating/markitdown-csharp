@@ -56,8 +56,9 @@ public sealed class ZipConverter : BaseConverter
                         throw new ConversionException($"ZIP uncompressed content exceeds {MaxTotalUncompressedBytes / 1024 / 1024} MB.");
                     }
 
+                    var ext = Path.GetExtension(entry.Name);
                     var tempPath = Path.Combine(Path.GetTempPath(),
-                        $"{Guid.NewGuid():N}{Path.GetExtension(entry.Name)}");
+                        $"{Guid.NewGuid():N}{ext}");
 
                     try
                     {

@@ -18,4 +18,10 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\MarkItDown.Converters.Office\MarkItDown.Converters.Office.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Copy fixture files to output directory for tests -->
+    <None Update="..\..\tests\Fixtures\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 </Project>

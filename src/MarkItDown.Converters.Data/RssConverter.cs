@@ -27,8 +27,7 @@ public sealed class RssConverter : BaseConverter
         {
             try
             {
-                var content = File.ReadAllText(filePath);
-                var doc = XDocument.Parse(content);
+                var doc = XDocument.Load(filePath);
                 var root = doc.Root ?? throw new ConversionException("Empty RSS/Atom document.");
 
                 var builder = new StringBuilder();

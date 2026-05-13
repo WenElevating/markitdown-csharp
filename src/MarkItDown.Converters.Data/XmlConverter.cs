@@ -24,8 +24,14 @@ public sealed class XmlConverter : BaseConverter
 
         try
         {
-            var content = await File.ReadAllTextAsync(filePath, cancellationToken);
-            var doc = XDocument.Parse(content);
+            var xmlSettings = new XmlReaderSettings
+            {
+                DtdProcessing = DtdProcessing.Prohibit,
+                XmlResolver = null,
+                Async = true,
+            };
+            using var xmlReader = XmlReader.Create(filePath, xmlSettings);
+            var doc = await XDocument.LoadAsync(xmlReader, LoadOptions.None, cancellationToken);
 
             var builder = new StringBuilder();
             builder.AppendLine("```xml");

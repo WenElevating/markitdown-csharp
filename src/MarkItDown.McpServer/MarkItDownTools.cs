@@ -29,9 +29,9 @@ public static class MarkItDownTools
             {
                 Assembly.LoadFrom(dll);
             }
-            catch
+            catch (Exception ex) when (ex is IOException or BadImageFormatException or FileLoadException)
             {
-                // Skip assemblies that cannot be loaded
+                // Skip assemblies that cannot be loaded (corrupt, wrong arch, missing deps)
             }
         }
     }

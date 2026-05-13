@@ -7,6 +7,12 @@ namespace MarkItDown.Converters.Office;
 
 public sealed class MsgConverter : BaseConverter
 {
+    // Compiled with MatchTimeout to prevent ReDoS on malformed HTML bodies.
+    // <[^>]{0,2000}> bounds backtracking depth on the strip-tag pattern.
+    private static readonly Regex BrTagRx    = new(@"<br\s*/?>",       RegexOptions.Compiled | RegexOptions.IgnoreCase, TimeSpan.FromSeconds(2));
+    private static readonly Regex PTagRx     = new(@"</p>",            RegexOptions.Compiled | RegexOptions.IgnoreCase, TimeSpan.FromSeconds(2));
+    private static readonly Regex StripTagRx = new(@"<[^>]{0,2000}>",  RegexOptions.Compiled,                          TimeSpan.FromSeconds(2));
+
     public override IReadOnlySet<string> SupportedExtensions =>
         new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".msg" };
 
@@ -65,11 +71,21 @@ public sealed class MsgConverter : BaseConverter
                 var body = msg.BodyHtml;
                 if (!string.IsNullOrWhiteSpace(body))
                 {
-                    body = Regex.Replace(body, "<br\\s*/?>", Environment.NewLine, RegexOptions.IgnoreCase);
-                    body = Regex.Replace(body, "</p>", Environment.NewLine + Environment.NewLine, RegexOptions.IgnoreCase);
-                    body = Regex.Replace(body, "<[^>]+>", "");
-                    body = System.Net.WebUtility.HtmlDecode(body);
-                    builder.Append(body.Trim());
+                    try
+                    {
+                        body = BrTagRx.Replace(body, Environment.NewLine);
+                        body = PTagRx.Replace(body, Environment.NewLine + Environment.NewLine);
+                        body = StripTagRx.Replace(body, "");
+                        body = System.Net.WebUtility.HtmlDecode(body);
+                        builder.Append(body.Trim());
+                    }
+                    catch (RegexMatchTimeoutException)
+                    {
+                        // HTML body is too complex to strip safely; fall back to plain text
+                        var textBody = msg.BodyText;
+                        if (!string.IsNullOrWhiteSpace(textBody))
+                            builder.Append(textBody.Trim());
+                    }
                 }
                 else
                 {
