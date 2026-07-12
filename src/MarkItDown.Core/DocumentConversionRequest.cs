@@ -9,4 +9,8 @@ public sealed record DocumentConversionRequest
     public ILlmClient? LlmClient { get; init; }
     public string? AssetBasePath { get; init; }
     public int ContainerDepth { get; init; }
+    public ConversionContext? Context { get; init; }
+    public ConversionOptions? Options { get; init; }
+    public IAssetStore? AssetStore { get; init; }
+    public IVisionAnalyzer? VisionAnalyzer { get; init; }
 }

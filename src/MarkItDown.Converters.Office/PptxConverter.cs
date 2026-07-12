@@ -20,14 +20,12 @@ public sealed class PptxConverter : BaseConverter
     public override async Task<DocumentConversionResult> ConvertAsync(
         DocumentConversionRequest request, CancellationToken cancellationToken = default)
     {
-        var filePath = request.FilePath
-            ?? throw new ConversionException("PPTX converter requires a file path.");
-
         return await Task.Run(() =>
         {
             try
             {
-                using var doc = PresentationDocument.Open(filePath, false);
+                using var input = DocumentInputMaterializer.Materialize(request, cancellationToken);
+                using var doc = PresentationDocument.Open(input.FilePath, false);
                 var presentationPart = doc.PresentationPart
                     ?? throw new ConversionException("Invalid PPTX file.");
 
@@ -43,7 +41,7 @@ public sealed class PptxConverter : BaseConverter
 
                     var blocks = new List<string>();
 
-                    foreach (var shape in slidePart.Slide.Descendants<Shape>())
+                    foreach (var shape in slidePart.Slide?.Descendants<Shape>() ?? [])
                     {
                         var text = ExtractShapeText(shape);
                         if (string.IsNullOrWhiteSpace(text)) continue;
@@ -88,8 +86,17 @@ public sealed class PptxConverter : BaseConverter
                 var markdown = string.Join(
                     Environment.NewLine + Environment.NewLine + "---" + Environment.NewLine + Environment.NewLine,
                     sections);
-                return new DocumentConversionResult("Pptx", markdown);
+                var images = OfficeAssetExtractor.Extract(
+                    slideParts.SelectMany(slide => slide.ImageParts), request);
+                if (!string.IsNullOrWhiteSpace(images))
+                    markdown = string.IsNullOrWhiteSpace(markdown) ? images : markdown + Environment.NewLine + Environment.NewLine + images;
+                var fidelity = request.Context?.Pipeline == PipelineMode.Multimodal
+                    ? FidelityStatus.NotEvaluated : FidelityStatus.NotEvaluated;
+                var document = DocumentModelBuilder.FromMarkdown("Pptx", markdown, fidelity);
+                markdown = MarkdownRenderer.Render(document);
+                return new DocumentConversionResult("Pptx", markdown, Document: document, Fidelity: fidelity);
             }
+            catch (OperationCanceledException) { throw; }
             catch (ConversionException) { throw; }
             catch (Exception ex)
             {

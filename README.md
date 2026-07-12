@@ -66,6 +66,12 @@ Enable LLM captioning for images and audio:
 
 ```bash
 dotnet run --project src/MarkItDown.Cli -- photo.jpg --llm-key sk-... --llm-model gpt-4o
+
+# Multimodal preview pipeline
+dotnet run --project src/MarkItDown.Cli -- document.pdf --pipeline multimodal --vision auto --diagnostics report.json
+
+# Optional Docling worker (Python 3.10+)
+python -m pip install -r tools/requirements-docling.txt
 ```
 
 List all supported formats:

@@ -84,6 +84,44 @@ public sealed class CliRunnerTests
         }
     }
 
+    [Fact]
+    public async Task Cli_MultimodalDiagnosticsWritesVersionedReport()
+    {
+        var report = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.json");
+        try
+        {
+            var result = await RunCliAsync(FixturePath.For("sample.pdf"), "--pipeline", "multimodal", "--diagnostics", report);
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.True(File.Exists(report));
+            var json = await File.ReadAllTextAsync(report);
+            Assert.Contains("SchemaVersion", json);
+            Assert.Contains("sample.pdf", json);
+        }
+        finally
+        {
+            if (File.Exists(report)) File.Delete(report);
+        }
+    }
+
+    [Fact]
+    public async Task Cli_RejectsMultimodalOnlyOptionOnLegacyPipeline()
+    {
+        var result = await RunCliAsync(FixturePath.For("sample.pdf"), "--vision", "off");
+
+        Assert.Equal(2, result.ExitCode);
+        Assert.Contains("require --pipeline multimodal", result.Stderr);
+    }
+
+    [Fact]
+    public async Task Cli_MultimodalScannedPdf_PreservesNativeImageExtraction()
+    {
+        var result = await RunCliAsync(FixturePath.For("scanned.pdf"), "--pipeline", "multimodal", "--vision", "auto");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("![image]", result.Stdout);
+    }
+
     private static async Task<CliResult> RunCliAsync(params string[] args)
     {
         var projectPath = Path.Combine(FixturePath.RepositoryRoot, "src", "MarkItDown.Cli", "MarkItDown.Cli.csproj");

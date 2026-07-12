@@ -17,22 +17,53 @@ public sealed class PdfConverter : BaseConverter
     {
         try
         {
-            using var document = PdfDocument.Open(request.FilePath);
+            using var input = DocumentInputMaterializer.Materialize(request, cancellationToken);
+            using var document = PdfDocument.Open(input.FilePath);
 
             var pages = document.GetPages().ToList();
+            var maxPages = request.Context?.MaxPages ?? request.Context?.Options.Limits.MaxPages;
+            if (maxPages is { } pageLimit && pages.Count > pageLimit)
+                throw new ConversionException($"PDF contains {pages.Count} pages, exceeding the configured limit of {pageLimit}.");
             var totalLetters = pages.Sum(p => p.Letters.Count);
             var hasImages = pages.Any(p => p.GetImages().Any());
 
             if (totalLetters < 20 && !hasImages)
             {
+                if (request.Context?.Pipeline == PipelineMode.Multimodal && request.Context.Options.DoclingTransport is not null)
+                    return ConvertWithDoclingFallbackAsync(request with { FilePath = input.FilePath }, request.Context.Options.DoclingTransport, cancellationToken);
+                if (request.Context?.Pipeline == PipelineMode.Multimodal)
+                {
+                    var diagnostic = new ConversionDiagnostic(
+                        "VISION_PROVIDER_UNAVAILABLE",
+                        request.Context.Vision == VisionMode.Required ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
+                        "The PDF has insufficient native text and no configured vision backend was available.",
+                        AffectsSubstantiveContent: true,
+                        Backend: "Pdf",
+                        RequiresReview: true);
+                    if (request.Context.Vision == VisionMode.Required)
+                    {
+                        throw new ConversionException(diagnostic.Message)
+                        {
+                            FailureReport = ConversionFailureReport.Create(
+                                diagnostic.Code, diagnostic.Message, request.Context.OperationId, "Pdf")
+                        };
+                    }
+                    var warning = "> [!WARNING] " + diagnostic.Message;
+                    var partialModel = DocumentModelBuilder.FromMarkdown("Pdf", warning, FidelityStatus.Partial, [diagnostic]);
+                    return Task.FromResult(new DocumentConversionResult(
+                        "Pdf", MarkdownRenderer.Render(partialModel), Document: partialModel,
+                        Fidelity: FidelityStatus.Partial, Diagnostics: [diagnostic]));
+                }
                 throw new ConversionException(
-                    "Scanned or image-only PDFs are not supported in this MVP.");
+                    "The PDF did not contain extractable text or images. Scanned or image-only PDFs require the multimodal pipeline or a vision backend.");
             }
 
             var assetBasePath = request.AssetBasePath;
-            var assetDirName = assetBasePath is not null
-                ? Path.GetFileName(assetBasePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
-                : null;
+            var assetDirName = request.Context?.Properties.TryGetValue("assetPathPrefix", out var prefix) == true && prefix is string prefixText
+                ? prefixText
+                : assetBasePath is not null
+                    ? Path.GetFileName(assetBasePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+                    : null;
 
             // --- Pass 1: Extract text blocks from all pages for header/footer detection ---
             var allPageTextBlocks = new List<List<PdfContentBlock>>();
@@ -72,10 +103,10 @@ public sealed class PdfConverter : BaseConverter
 
                 // Extract images
                 var imageBlocks = new List<PdfImageBlock>();
-                if (assetBasePath is not null)
+                if (assetBasePath is not null || request.Context?.AssetTransaction is not null)
                 {
                     imageBlocks = PdfImageExtractor.ExtractImages(
-                        page, pageNumber, assetBasePath, pageArea, seenHashes);
+                        page, pageNumber, assetBasePath, pageArea, seenHashes, request.Context?.AssetTransaction);
                 }
 
                 var allBlocks = textBlocks
@@ -102,6 +133,25 @@ public sealed class PdfConverter : BaseConverter
 
             if (string.IsNullOrWhiteSpace(markdown))
             {
+                if (request.Context?.Pipeline == PipelineMode.Multimodal)
+                {
+                    var required = request.Context.Vision == VisionMode.Required;
+                    var diagnostic = new ConversionDiagnostic(
+                        "VISION_PROVIDER_UNAVAILABLE", required ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
+                        "The PDF contained visual content that could not be decoded without a vision backend.",
+                        AffectsSubstantiveContent: true, Backend: "Pdf", RequiresReview: true);
+                    if (required)
+                    {
+                        throw new ConversionException(diagnostic.Message)
+                        {
+                            FailureReport = ConversionFailureReport.Create(diagnostic.Code, diagnostic.Message, request.Context.OperationId, "Pdf")
+                        };
+                    }
+                    var partialModel = DocumentModelBuilder.FromMarkdown("Pdf", "> [!WARNING] " + diagnostic.Message, FidelityStatus.Partial, [diagnostic]);
+                    return Task.FromResult(new DocumentConversionResult(
+                        "Pdf", MarkdownRenderer.Render(partialModel), Document: partialModel,
+                        Fidelity: FidelityStatus.Partial, Diagnostics: [diagnostic]));
+                }
                 throw new ConversionException(
                     "The PDF did not contain extractable text or images.");
             }
@@ -109,8 +159,17 @@ public sealed class PdfConverter : BaseConverter
             var assetDir = assetBasePath is not null && Directory.Exists(assetBasePath)
                 ? assetBasePath : null;
 
+            var fidelity = request.Context?.Pipeline == PipelineMode.Multimodal
+                ? FidelityStatus.Complete
+                : FidelityStatus.NotEvaluated;
+            var model = DocumentModelBuilder.FromMarkdown("Pdf", markdown, fidelity);
+            markdown = MarkdownRenderer.Render(model);
             return Task.FromResult(new DocumentConversionResult(
-                "Pdf", markdown, null, assetDir));
+                "Pdf", markdown, null, assetDir, model, fidelity));
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (ConversionException)
         {
@@ -119,6 +178,38 @@ public sealed class PdfConverter : BaseConverter
         catch (Exception ex)
         {
             throw new ConversionException("Failed to convert PDF to Markdown.", ex);
+        }
+    }
+
+    private static async Task<DocumentConversionResult> ConvertWithDoclingFallbackAsync(
+        DocumentConversionRequest request,
+        IDoclingTransport transport,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await DoclingDocumentConverter.ConvertFileAsync("Pdf", request, transport, cancellationToken);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            if (request.Context?.Vision == VisionMode.Required)
+            {
+                throw new ConversionException("Docling enhancement failed and is required.", ex)
+                {
+                    FailureReport = ConversionFailureReport.Create(
+                        "DOCLING_FAILED", ex.Message, request.Context.OperationId, "Pdf")
+                };
+            }
+            var diagnostic = new ConversionDiagnostic(
+                "DOCLING_FAILED_FALLBACK_NATIVE", DiagnosticSeverity.Warning,
+                $"Docling enhancement failed; native PDF output was retained: {ex.Message}",
+                AffectsSubstantiveContent: true, Backend: "Docling", FallbackReason: "native-pdf", RequiresReview: true);
+            var model = DocumentModelBuilder.FromMarkdown(
+                "Pdf", "> [!WARNING] " + diagnostic.Message, FidelityStatus.Partial, [diagnostic]);
+            return new DocumentConversionResult(
+                "Pdf", MarkdownRenderer.Render(model), Document: model,
+                Fidelity: FidelityStatus.Partial, Diagnostics: [diagnostic]);
         }
     }
 }

@@ -74,6 +74,7 @@ public sealed class EpubConverter : BaseConverter
                 var markdown = builder.ToString().TrimEnd();
                 return new DocumentConversionResult("Epub", markdown);
             }
+            catch (OperationCanceledException) { throw; }
             catch (ConversionException) { throw; }
             catch (Exception ex)
             {

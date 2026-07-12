@@ -30,6 +30,7 @@ public sealed class JsonConverter : BaseConverter
             var markdown = $"```json{Environment.NewLine}{formatted}{Environment.NewLine}```";
             return new DocumentConversionResult("Json", markdown);
         }
+        catch (OperationCanceledException) { throw; }
         catch (ConversionException) { throw; }
         catch (Exception ex)
         {

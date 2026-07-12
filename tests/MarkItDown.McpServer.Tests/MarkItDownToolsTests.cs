@@ -124,4 +124,25 @@ public sealed class MarkItDownToolsTests
             Directory.Delete(deniedRoot, recursive: true);
         }
     }
+
+    [Fact]
+    public void ConvertToMarkdownDetailed_ReturnsStableSuccessShape()
+    {
+        var tempFile = Path.Combine(Environment.CurrentDirectory, $"detailed_{Guid.NewGuid():N}.md");
+        File.WriteAllText(tempFile, "# Detailed\n\nBody");
+        try
+        {
+            var result = MarkItDownTools.ConvertToMarkdownDetailed(tempFile);
+
+            Assert.Equal("NotEvaluated", result.Status);
+            Assert.Contains("Detailed", result.Markdown);
+            Assert.NotNull(result.AssetUris);
+            Assert.NotNull(result.Diagnostics);
+            Assert.NotNull(result.Usage);
+        }
+        finally
+        {
+            File.Delete(tempFile);
+        }
+    }
 }

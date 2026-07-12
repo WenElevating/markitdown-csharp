@@ -62,6 +62,21 @@ public sealed class WebRequestGuardTests
         Assert.Contains("non-public", exception.Message);
     }
 
+    [Fact]
+    public async Task FetchStringAsync_WhenHttpRequestTimesOut_ThrowsConversionException()
+    {
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(_ =>
+            throw new TaskCanceledException("simulated timeout")));
+
+        var exception = await Assert.ThrowsAsync<ConversionException>(() =>
+            WebRequestGuard.FetchStringAsync(
+                "http://93.184.216.34/start",
+                httpClient,
+                CancellationToken.None));
+
+        Assert.Contains("timed out", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static HttpResponseMessage Redirect(HttpStatusCode statusCode, string location)
     {
         var response = new HttpResponseMessage(statusCode);

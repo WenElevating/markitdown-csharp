@@ -102,6 +102,8 @@ internal static class PdfContentGrouper
 
     private static string RenderImage(PdfImageBlock image, string? assetDirName)
     {
+        if (image.FileName.StartsWith("asset://", StringComparison.Ordinal) || image.FileName.StartsWith("markitdown://", StringComparison.Ordinal))
+            return $"![image]({image.FileName})";
         var imagePath = string.IsNullOrEmpty(assetDirName)
             ? $"./{image.FileName}"
             : $"./{assetDirName}/{image.FileName}";

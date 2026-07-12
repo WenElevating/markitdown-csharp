@@ -53,6 +53,7 @@ public sealed class XmlConverter : BaseConverter
 
             return new DocumentConversionResult("Xml", builder.ToString());
         }
+        catch (OperationCanceledException) { throw; }
         catch (ConversionException) { throw; }
         catch (Exception ex)
         {

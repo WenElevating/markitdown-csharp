@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "1",
+  "entries": [
+    { "format": "pdf", "path": "../Fixtures/sample.pdf", "features": ["native-text", "headings", "images"] },
+    { "format": "pdf", "path": "../Fixtures/table.pdf", "features": ["table", "reading-order"] },
+    { "format": "pdf", "path": "../Fixtures/scanned.pdf", "features": ["scanned", "partial-fallback"] },
+    { "format": "office", "path": "../Fixtures/office/sample.csv", "features": ["compatibility-baseline"] }
+  ]
+}

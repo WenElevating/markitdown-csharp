@@ -42,6 +42,22 @@ public sealed class PdfConverterTests
     }
 
     [Fact]
+    public async Task ConvertAsync_ScannedPdf_MultimodalAutoReturnsVisiblePartialDiagnosticWithoutProvider()
+    {
+        var options = new ConversionOptions { PipelineMode = PipelineMode.Multimodal };
+        var result = await _converter.ConvertAsync(new DocumentConversionRequest
+        {
+            FilePath = FixturePath.For("scanned.pdf"),
+            Options = options,
+            Context = new ConversionContext { Pipeline = PipelineMode.Multimodal, Options = options, Vision = VisionMode.Auto }
+        });
+
+        Assert.Equal(FidelityStatus.Partial, result.FidelityStatus);
+        Assert.Contains("VISION_PROVIDER_UNAVAILABLE", result.Diagnostics!.Select(d => d.Code));
+        Assert.Contains("WARNING", result.Markdown);
+    }
+
+    [Fact]
     public async Task ConvertAsync_ClassifiesHeadingsByFontSize()
     {
         var result = await _converter.ConvertAsync(

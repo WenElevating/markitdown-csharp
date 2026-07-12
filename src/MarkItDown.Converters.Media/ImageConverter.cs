@@ -50,6 +50,10 @@ public sealed class ImageConverter : BaseConverter
 
             return new DocumentConversionResult("Image", markdown.ToString().Trim());
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (ConversionException)
         {
             throw;

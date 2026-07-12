@@ -52,6 +52,10 @@ public sealed class HtmlConverter : BaseConverter
             var markdown = string.Join($"{Environment.NewLine}{Environment.NewLine}", blocks).Trim();
             return Task.FromResult(new DocumentConversionResult("Html", markdown, title));
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (ConversionException)
         {
             throw;

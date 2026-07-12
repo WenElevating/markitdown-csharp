@@ -32,27 +32,36 @@ internal static class WebRequestGuard
 
         for (var redirectCount = 0; redirectCount <= MaxRedirects; redirectCount++)
         {
-            using var response = await httpClient.GetAsync(
-                currentUri,
-                HttpCompletionOption.ResponseHeadersRead,
-                cancellationToken);
-
-            if (IsRedirect(response.StatusCode))
+            try
             {
-                if (redirectCount == MaxRedirects)
+                using var response = await httpClient.GetAsync(
+                    currentUri,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    cancellationToken);
+
+                if (IsRedirect(response.StatusCode))
                 {
-                    throw new ConversionException($"Too many redirects. Maximum supported redirects: {MaxRedirects}.");
+                    if (redirectCount == MaxRedirects)
+                    {
+                        throw new ConversionException($"Too many redirects. Maximum supported redirects: {MaxRedirects}.");
+                    }
+
+                    var location = response.Headers.Location
+                        ?? throw new ConversionException("Redirect response did not include a Location header.");
+                    var nextUri = location.IsAbsoluteUri ? location : new Uri(currentUri, location);
+                    currentUri = await ValidatePublicHttpUrlAsync(nextUri.ToString(), cancellationToken);
+                    continue;
                 }
 
-                var location = response.Headers.Location
-                    ?? throw new ConversionException("Redirect response did not include a Location header.");
-                var nextUri = location.IsAbsoluteUri ? location : new Uri(currentUri, location);
-                currentUri = await ValidatePublicHttpUrlAsync(nextUri.ToString(), cancellationToken);
-                continue;
+                response.EnsureSuccessStatusCode();
+                return await response.Content.ReadAsStringAsync(cancellationToken);
             }
-
-            response.EnsureSuccessStatusCode();
-            return await response.Content.ReadAsStringAsync(cancellationToken);
+            catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new ConversionException(
+                    $"Web request timed out after {httpClient.Timeout.TotalSeconds:0.#} seconds.",
+                    ex);
+            }
         }
 
         throw new ConversionException($"Too many redirects. Maximum supported redirects: {MaxRedirects}.");

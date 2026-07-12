@@ -8,11 +8,18 @@ public sealed class MarkItDownEngineTests
     {
         private readonly string _kind;
         private readonly string _markdown;
+        private readonly Func<DocumentConversionRequest, CancellationToken, Task<DocumentConversionResult>>? _convert;
 
-        public StubConverter(string kind, string extension, string markdown, double priority = 0.0)
+        public StubConverter(
+            string kind,
+            string extension,
+            string markdown,
+            double priority = 0.0,
+            Func<DocumentConversionRequest, CancellationToken, Task<DocumentConversionResult>>? convert = null)
         {
             _kind = kind;
             _markdown = markdown;
+            _convert = convert;
             SupportedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { extension };
             SupportedMimeTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             Priority = priority;
@@ -23,7 +30,8 @@ public sealed class MarkItDownEngineTests
         public override double Priority { get; }
         public override Task<DocumentConversionResult> ConvertAsync(
             DocumentConversionRequest request, CancellationToken ct)
-            => Task.FromResult(new DocumentConversionResult(_kind, _markdown));
+            => _convert?.Invoke(request, ct)
+                ?? Task.FromResult(new DocumentConversionResult(_kind, _markdown));
     }
 
     [Fact]
@@ -79,6 +87,25 @@ public sealed class MarkItDownEngineTests
         using var stream = new MemoryStream();
         await Assert.ThrowsAsync<ArgumentException>(() =>
             engine.ConvertAsync(stream));
+    }
+
+    [Fact]
+    public async Task ConvertAsync_WhenConverterCancels_PreservesOperationCanceledException()
+    {
+        var engine = new MarkItDownEngine(builder => builder
+            .Add(new StubConverter("Html", ".html", "x", convert: (_, ct) =>
+            {
+                ct.ThrowIfCancellationRequested();
+                throw new InvalidOperationException("Expected cancellation.");
+            })));
+
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            engine.ConvertAsync(
+                new DocumentConversionRequest { FilePath = "test.html" },
+                cts.Token));
     }
 
     [Fact]

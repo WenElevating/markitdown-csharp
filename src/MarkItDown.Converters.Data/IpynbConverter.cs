@@ -73,6 +73,7 @@ public sealed class IpynbConverter : BaseConverter
             var markdown = builder.ToString().TrimEnd();
             return new DocumentConversionResult("Ipynb", markdown);
         }
+        catch (OperationCanceledException) { throw; }
         catch (ConversionException) { throw; }
         catch (Exception ex)
         {

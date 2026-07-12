@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using MarkItDown.Core;
 using UglyToad.PdfPig.Content;
 
 namespace MarkItDown.Converters.Pdf;
@@ -11,9 +12,10 @@ internal static class PdfImageExtractor
     internal static List<PdfImageBlock> ExtractImages(
         Page page,
         int pageNumber,
-        string assetBasePath,
+        string? assetBasePath,
         double pageArea,
-        Dictionary<string, string> seenHashes)
+        Dictionary<string, string> seenHashes,
+        IAssetTransaction? assetTransaction = null)
     {
         var images = page.GetImages().ToList();
         if (images.Count == 0)
@@ -21,7 +23,8 @@ internal static class PdfImageExtractor
             return [];
         }
 
-        Directory.CreateDirectory(assetBasePath);
+        if (assetBasePath is null && assetTransaction is null) return [];
+        if (assetBasePath is not null) Directory.CreateDirectory(assetBasePath);
         var blocks = new List<PdfImageBlock>();
 
         for (var i = 0; i < images.Count; i++)
@@ -33,7 +36,7 @@ internal static class PdfImageExtractor
                 continue;
             }
 
-            var saved = SaveImage(pdfImage, pageNumber, i, assetBasePath, seenHashes);
+            var saved = SaveImage(pdfImage, pageNumber, i, assetBasePath, seenHashes, assetTransaction);
             if (saved is null)
             {
                 continue;
@@ -78,8 +81,9 @@ internal static class PdfImageExtractor
         IPdfImage image,
         int pageNumber,
         int imageIndex,
-        string assetBasePath,
-        Dictionary<string, string> seenHashes)
+        string? assetBasePath,
+        Dictionary<string, string> seenHashes,
+        IAssetTransaction? assetTransaction)
     {
         byte[]? imageBytes = null;
         string extension;
@@ -106,8 +110,18 @@ internal static class PdfImageExtractor
         }
 
         var fileName = $"page{pageNumber}_img{imageIndex}{extension}";
-        var fullPath = Path.Combine(assetBasePath, fileName);
-        File.WriteAllBytes(fullPath, imageBytes);
+        if (assetBasePath is not null)
+        {
+            var fullPath = Path.Combine(assetBasePath, fileName);
+            File.WriteAllBytes(fullPath, imageBytes);
+        }
+        else if (assetTransaction is not null)
+        {
+            var asset = assetTransaction.PutAsync(
+                new MemoryStream(imageBytes), fileName, extension == ".png" ? "image/png" : "image/jpeg")
+                .GetAwaiter().GetResult();
+            fileName = $"asset://{asset.Id}";
+        }
 
         seenHashes[hash] = fileName;
         return fileName;

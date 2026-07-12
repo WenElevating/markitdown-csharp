@@ -47,6 +47,10 @@ public sealed class WikipediaConverter : BaseConverter
 
             return new DocumentConversionResult("Wikipedia", markdown, title);
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (ConversionException)
         {
             throw;

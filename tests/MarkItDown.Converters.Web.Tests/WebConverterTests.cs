@@ -35,6 +35,18 @@ public sealed class WebConverterTests
         Assert.False(_converter.CanConvert(request));
     }
 
+    [Fact]
+    public async Task ConvertAsync_WhenCancelled_PreservesOperationCanceledException()
+    {
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            _converter.ConvertAsync(
+                new DocumentConversionRequest { FilePath = "http://93.184.216.34/page" },
+                cts.Token));
+    }
+
     [Theory]
     [InlineData("http://127.0.0.1/page")]
     [InlineData("http://10.0.0.1/page")]

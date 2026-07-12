@@ -19,14 +19,12 @@ public sealed class XlsxConverter : BaseConverter
     public override async Task<DocumentConversionResult> ConvertAsync(
         DocumentConversionRequest request, CancellationToken cancellationToken = default)
     {
-        var filePath = request.FilePath
-            ?? throw new ConversionException("XLSX converter requires a file path.");
-
         return await Task.Run(() =>
         {
             try
             {
-                using var doc = SpreadsheetDocument.Open(filePath, false);
+                using var input = DocumentInputMaterializer.Materialize(request, cancellationToken);
+                using var doc = SpreadsheetDocument.Open(input.FilePath, false);
                 var workbookPart = doc.WorkbookPart
                     ?? throw new ConversionException("Invalid XLSX file.");
 
@@ -54,6 +52,21 @@ public sealed class XlsxConverter : BaseConverter
 
                     var builder = new StringBuilder();
                     builder.AppendLine($"## {sheetName}");
+
+                    var hiddenRows = rows.Where(row => row.Hidden?.Value == true).Select(row => row.RowIndex?.Value).Where(index => index is not null).ToArray();
+                    if (hiddenRows.Length > 0)
+                        builder.AppendLine($"<!-- Hidden rows: {string.Join(", ", hiddenRows)} -->");
+                    var hiddenColumns = (worksheetPart.Worksheet?.Elements<Columns>() ?? [])
+                        .SelectMany(columns => columns.Elements<Column>())
+                        .Where(column => column.Hidden?.Value == true)
+                        .Select(column => $"{column.Min?.Value}-{column.Max?.Value}").ToArray();
+                    if (hiddenColumns.Length > 0)
+                        builder.AppendLine($"<!-- Hidden columns: {string.Join(", ", hiddenColumns)} -->");
+                    var mergedRanges = (worksheetPart.Worksheet?.Elements<MergeCells>() ?? [])
+                        .SelectMany(merges => merges.Elements<MergeCell>())
+                        .Select(cell => cell.Reference?.Value).Where(reference => !string.IsNullOrWhiteSpace(reference)).ToArray();
+                    if (mergedRanges.Length > 0)
+                        builder.AppendLine($"<!-- Merged cells: {string.Join(", ", mergedRanges)} -->");
 
                     // First row = header
                     var headerCells = rows[0].Elements<Cell>().ToList();
@@ -86,8 +99,15 @@ public sealed class XlsxConverter : BaseConverter
                 }
 
                 var markdown = string.Join(Environment.NewLine + Environment.NewLine, sections);
-                return new DocumentConversionResult("Xlsx", markdown);
+                var images = OfficeAssetExtractor.Extract(
+                    workbookPart.WorksheetParts.SelectMany(sheet => sheet.ImageParts), request);
+                if (!string.IsNullOrWhiteSpace(images))
+                    markdown = string.IsNullOrWhiteSpace(markdown) ? images : markdown + Environment.NewLine + Environment.NewLine + images;
+                var document = DocumentModelBuilder.FromMarkdown("Xlsx", markdown, FidelityStatus.NotEvaluated);
+                markdown = MarkdownRenderer.Render(document);
+                return new DocumentConversionResult("Xlsx", markdown, Document: document);
             }
+            catch (OperationCanceledException) { throw; }
             catch (ConversionException) { throw; }
             catch (Exception ex)
             {
@@ -109,6 +129,11 @@ public sealed class XlsxConverter : BaseConverter
                     value = element.InnerText;
             }
         }
+
+        if (cell.DataType?.Value == CellValues.Error)
+            value = $"#ERROR! {value}";
+        if (cell.CellFormula is not null && !string.IsNullOrWhiteSpace(cell.CellFormula.Text))
+            value = $"={cell.CellFormula.Text} => {value}";
 
         return value;
     }

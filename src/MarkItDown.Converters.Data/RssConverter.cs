@@ -49,6 +49,7 @@ public sealed class RssConverter : BaseConverter
                 var markdown = builder.ToString().TrimEnd();
                 return new DocumentConversionResult("Rss", markdown);
             }
+            catch (OperationCanceledException) { throw; }
             catch (ConversionException) { throw; }
             catch (Exception ex)
             {

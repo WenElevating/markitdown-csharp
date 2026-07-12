@@ -7,6 +7,9 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <None Include="..\..\tools\docling_worker.py" Link="docling_worker.py" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="System.CommandLine" Version="2.0.5" />
   </ItemGroup>
   <ItemGroup>

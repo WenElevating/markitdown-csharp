@@ -14,7 +14,7 @@ public sealed class AudioConverter : BaseConverter
             "audio/mpeg", "audio/x-wav", "audio/mp4", "audio/x-m4a"
         };
 
-    public override async Task<DocumentConversionResult> ConvertAsync(
+    public override Task<DocumentConversionResult> ConvertAsync(
         DocumentConversionRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -73,7 +73,7 @@ public sealed class AudioConverter : BaseConverter
                 }
             }
 
-            return new DocumentConversionResult("Audio", markdown.ToString().Trim());
+            return Task.FromResult(new DocumentConversionResult("Audio", markdown.ToString().Trim()));
         }
         catch (ConversionException)
         {

@@ -96,6 +96,7 @@ public sealed class MsgConverter : BaseConverter
 
                 return new DocumentConversionResult("Msg", builder.ToString().Trim());
             }
+            catch (OperationCanceledException) { throw; }
             catch (ConversionException) { throw; }
             catch (Exception ex)
             {

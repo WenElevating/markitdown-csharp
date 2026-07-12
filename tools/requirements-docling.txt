@@ -1,0 +1,2 @@
+# Pinned worker dependency; update only with a new Docling protocol/fixture baseline.
+docling==2.112.0

@@ -61,6 +61,10 @@ public sealed class WebConverter : BaseConverter
             var markdown = string.Join($"{Environment.NewLine}{Environment.NewLine}", blocks).Trim();
             return new DocumentConversionResult("Web", markdown, title);
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (ConversionException)
         {
             throw;

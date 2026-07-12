@@ -92,6 +92,7 @@ public sealed class ZipConverter : BaseConverter
                 var markdown = string.Join(Environment.NewLine + Environment.NewLine, sections);
                 return new DocumentConversionResult("Zip", markdown);
             }
+            catch (OperationCanceledException) { throw; }
             catch (ConversionException) { throw; }
             catch (Exception ex)
             {

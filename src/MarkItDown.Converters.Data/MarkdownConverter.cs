@@ -21,6 +21,7 @@ public sealed class MarkdownConverter : BaseConverter
             var content = await File.ReadAllTextAsync(filePath, cancellationToken);
             return new DocumentConversionResult("Markdown", content);
         }
+        catch (OperationCanceledException) { throw; }
         catch (ConversionException) { throw; }
         catch (Exception ex)
         {

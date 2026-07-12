@@ -49,6 +49,7 @@ public sealed class JsonlConverter : BaseConverter
             var markdown = $"```jsonl{Environment.NewLine}{inner}{Environment.NewLine}```";
             return new DocumentConversionResult("Jsonl", markdown);
         }
+        catch (OperationCanceledException) { throw; }
         catch (ConversionException) { throw; }
         catch (Exception ex)
         {

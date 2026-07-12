@@ -66,6 +66,12 @@ dotnet run --project src/MarkItDown.Cli -- https://example.com
 
 ```bash
 dotnet run --project src/MarkItDown.Cli -- photo.jpg --llm-key sk-... --llm-model gpt-4o
+
+# 多模态预览管线
+dotnet run --project src/MarkItDown.Cli -- document.pdf --pipeline multimodal --vision auto --diagnostics report.json
+
+# 可选 Docling worker（Python 3.10+）
+python -m pip install -r tools/requirements-docling.txt
 ```
 
 列出所有支持的格式：

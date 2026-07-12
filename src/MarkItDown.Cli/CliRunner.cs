@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.Text.Json;
 using MarkItDown.Core;
 using MarkItDown.Converters.Html;
 using MarkItDown.Converters.Pdf;
@@ -43,6 +44,19 @@ public static class CliRunner
         Description = "Custom API endpoint (e.g. Azure OpenAI)"
     };
 
+    private static readonly Option<string> BackendOption = new("--backend") { DefaultValueFactory = _ => "auto", Description = "Conversion backend: native, auto, or docling" };
+    private static readonly Option<string> VisionOption = new("--vision") { DefaultValueFactory = _ => "auto", Description = "Visual enhancement: off, auto, or required" };
+    private static readonly Option<string> DoclingModeOption = new("--docling-mode") { DefaultValueFactory = _ => "process", Description = "Docling transport: process or http" };
+    private static readonly Option<string?> DoclingEndpointOption = new("--docling-endpoint") { Description = "Remote Docling HTTP endpoint" };
+    private static readonly Option<string?> TimeoutOption = new("--timeout") { Description = "Conversion timeout (for example, 00:05:00)" };
+    private static readonly Option<int?> MaxPagesOption = new("--max-pages") { Description = "Maximum pages to process" };
+    private static readonly Option<long?> MaxBytesOption = new("--max-bytes") { Description = "Maximum input bytes" };
+    private static readonly Option<string?> ReportOption = new("--diagnostics", "--report") { Description = "Write conversion diagnostics as JSON" };
+    private static readonly Option<string?> AssetsOption = new("--assets") { Description = "Asset output directory" };
+    private static readonly Option<bool> FailOnPartialOption = new("--fail-on-partial") { Description = "Return failure when fidelity is partial" };
+    private static readonly Option<string> PipelineOption = new("--pipeline") { DefaultValueFactory = _ => "legacy", Description = "Pipeline: legacy or multimodal" };
+    private static readonly Option<bool> AllowDocumentUploadOption = new("--allow-document-upload") { Description = "Allow configured visual providers to upload document pages" };
+
     public static RootCommand BuildCommand()
     {
         var root = new RootCommand("markitdown — Convert files and URLs to Markdown");
@@ -53,6 +67,18 @@ public static class CliRunner
         root.Options.Add(LlmKeyOption);
         root.Options.Add(LlmModelOption);
         root.Options.Add(LlmEndpointOption);
+        root.Options.Add(BackendOption);
+        root.Options.Add(VisionOption);
+        root.Options.Add(DoclingModeOption);
+        root.Options.Add(DoclingEndpointOption);
+        root.Options.Add(TimeoutOption);
+        root.Options.Add(MaxPagesOption);
+        root.Options.Add(MaxBytesOption);
+        root.Options.Add(ReportOption);
+        root.Options.Add(AssetsOption);
+        root.Options.Add(FailOnPartialOption);
+        root.Options.Add(PipelineOption);
+        root.Options.Add(AllowDocumentUploadOption);
 
         root.SetAction(parseResult =>
         {
@@ -108,16 +134,16 @@ public static class CliRunner
         var llmKey = parseResult.GetValue(LlmKeyOption);
         var llmModel = parseResult.GetValue(LlmModelOption) ?? "gpt-4o";
         var llmEndpoint = parseResult.GetValue(LlmEndpointOption);
-
         var engine = BuildEngine();
         var llmClient = BuildLlmClient(llmKey, llmModel, llmEndpoint);
 
         try
         {
+            var context = BuildContext(parseResult);
             if (paths.Length == 1)
-                return await ConvertSingleAsync(engine, llmClient, paths[0], outputPath, stdout, cancellationToken);
+                return await ConvertSingleAsync(engine, llmClient, paths[0], outputPath, stdout, context, cancellationToken);
 
-            return await ConvertMultipleAsync(engine, llmClient, paths, outputPath, stdout, stderr, cancellationToken);
+            return await ConvertMultipleAsync(engine, llmClient, paths, outputPath, stdout, stderr, context, cancellationToken);
         }
         catch (FileNotFoundException ex)
         {
@@ -154,16 +180,16 @@ public static class CliRunner
         var llmKey = parseResult.GetValue(LlmKeyOption);
         var llmModel = parseResult.GetValue(LlmModelOption) ?? "gpt-4o";
         var llmEndpoint = parseResult.GetValue(LlmEndpointOption);
-
         var engine = BuildEngine();
         var llmClient = BuildLlmClient(llmKey, llmModel, llmEndpoint);
 
         try
         {
+            var context = BuildContext(parseResult);
             if (paths.Length == 1)
-                return await ConvertSingleInvokeAsync(engine, llmClient, paths[0], outputPath);
+                return await ConvertSingleInvokeAsync(engine, llmClient, paths[0], outputPath, context);
 
-            return await ConvertMultipleInvokeAsync(engine, llmClient, paths, outputPath);
+            return await ConvertMultipleInvokeAsync(engine, llmClient, paths, outputPath, context);
         }
         catch (FileNotFoundException ex)
         {
@@ -217,9 +243,10 @@ public static class CliRunner
 
     private static async Task<int> ConvertSingleAsync(
         MarkItDownEngine engine, ILlmClient? llmClient, string inputPath, string? outputPath,
-        TextWriter stdout, CancellationToken ct)
+        TextWriter stdout, ConversionContext context, CancellationToken ct)
     {
-        var request = new DocumentConversionRequest { FilePath = inputPath, LlmClient = llmClient, AssetBasePath = ComputeAssetPath(inputPath, outputPath) };
+        using var publication = CreatePublication(outputPath, context, ct, out var effectiveContext);
+        var request = new DocumentConversionRequest { FilePath = inputPath, LlmClient = llmClient, AssetBasePath = publication?.AssetDirectory ?? ComputeAssetPath(inputPath, outputPath, effectiveContext), Options = effectiveContext.Options, Context = effectiveContext };
         var result = await engine.ConvertAsync(request, ct);
 
         if (string.IsNullOrWhiteSpace(outputPath))
@@ -242,13 +269,20 @@ public static class CliRunner
             await stdout.WriteLineAsync($"Images saved to: {Path.GetFullPath(result.AssetDirectory)}");
         }
 
-        return 0;
+        await WriteDiagnosticsAsync(result, inputPath, outputPath, effectiveContext, ct);
+        if (publication is not null)
+        {
+            publication.Complete();
+            AssetPublication.CleanupOldPublications(publication);
+        }
+        return GetResultExitCode(result, effectiveContext);
     }
 
     private static async Task<int> ConvertSingleInvokeAsync(
-        MarkItDownEngine engine, ILlmClient? llmClient, string inputPath, string? outputPath)
+        MarkItDownEngine engine, ILlmClient? llmClient, string inputPath, string? outputPath, ConversionContext context)
     {
-        var request = new DocumentConversionRequest { FilePath = inputPath, LlmClient = llmClient, AssetBasePath = ComputeAssetPath(inputPath, outputPath) };
+        using var publication = CreatePublication(outputPath, context, CancellationToken.None, out var effectiveContext);
+        var request = new DocumentConversionRequest { FilePath = inputPath, LlmClient = llmClient, AssetBasePath = publication?.AssetDirectory ?? ComputeAssetPath(inputPath, outputPath, effectiveContext), Options = effectiveContext.Options, Context = effectiveContext };
         var result = await engine.ConvertAsync(request);
 
         if (string.IsNullOrWhiteSpace(outputPath))
@@ -271,12 +305,18 @@ public static class CliRunner
             Console.WriteLine($"Images saved to: {Path.GetFullPath(result.AssetDirectory)}");
         }
 
-        return 0;
+        await WriteDiagnosticsAsync(result, inputPath, outputPath, effectiveContext, CancellationToken.None);
+        if (publication is not null)
+        {
+            publication.Complete();
+            AssetPublication.CleanupOldPublications(publication);
+        }
+        return GetResultExitCode(result, effectiveContext);
     }
 
     private static async Task<int> ConvertMultipleAsync(
         MarkItDownEngine engine, ILlmClient? llmClient, string[] inputPaths, string? outputPath,
-        TextWriter stdout, TextWriter stderr, CancellationToken ct)
+        TextWriter stdout, TextWriter stderr, ConversionContext context, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(outputPath))
         {
@@ -293,17 +333,28 @@ public static class CliRunner
 
         Directory.CreateDirectory(outputPath!);
         var exitCode = 0;
+        var sawUnsupported = false;
+        var sawPartial = false;
+        var diagnosticEntries = new List<DiagnosticEntry>();
 
         foreach (var inputPath in inputPaths)
         {
             try
             {
                 var outFile = FileSystemBoundary.BuildOutputFilePath(inputPath, outputPath!);
+                using var publication = CreatePublication(outFile, context, ct, out var effectiveContext);
 
-                var request = new DocumentConversionRequest { FilePath = inputPath, LlmClient = llmClient, AssetBasePath = ComputeAssetPath(inputPath, outFile) };
+                var request = new DocumentConversionRequest { FilePath = inputPath, LlmClient = llmClient, AssetBasePath = publication?.AssetDirectory ?? ComputeAssetPath(inputPath, outFile, effectiveContext), Options = effectiveContext.Options, Context = effectiveContext };
                 var result = await engine.ConvertAsync(request, ct);
 
                 await File.WriteAllTextAsync(outFile, result.Markdown, ct);
+                if (publication is not null)
+                {
+                    publication.Complete();
+                    AssetPublication.CleanupOldPublications(publication);
+                }
+                diagnosticEntries.Add(new DiagnosticEntry(inputPath, outFile, result.FidelityStatus.ToString(), result.Diagnostics ?? Array.Empty<ConversionDiagnostic>(), result.Usage));
+                sawPartial |= result.FidelityStatus == FidelityStatus.Partial;
 
                 await stdout.WriteLineAsync($"Converted: {inputPath} -> {outFile}");
             }
@@ -315,6 +366,9 @@ public static class CliRunner
             catch (UnsupportedFormatException ex)
             {
                 await stderr.WriteLineAsync($"Skipped: {ex.Message}");
+                sawUnsupported = true;
+                diagnosticEntries.Add(new DiagnosticEntry(inputPath, null, FidelityStatus.Failed.ToString(),
+                    [new ConversionDiagnostic("UNSUPPORTED_FORMAT", DiagnosticSeverity.Error, ex.Message)], new()));
             }
             catch (ConversionException ex)
             {
@@ -322,12 +376,14 @@ public static class CliRunner
                 exitCode = 2;
             }
         }
-
+        await WriteBatchDiagnosticsAsync(diagnosticEntries, context, ct);
+        if (exitCode == 0 && sawUnsupported) return 1;
+        if (exitCode == 0 && sawPartial && context.Properties.TryGetValue("failOnPartial", out var fail) && fail is true) return 3;
         return exitCode;
     }
 
     private static async Task<int> ConvertMultipleInvokeAsync(
-        MarkItDownEngine engine, ILlmClient? llmClient, string[] inputPaths, string? outputPath)
+        MarkItDownEngine engine, ILlmClient? llmClient, string[] inputPaths, string? outputPath, ConversionContext context)
     {
         if (string.IsNullOrWhiteSpace(outputPath))
         {
@@ -344,17 +400,28 @@ public static class CliRunner
 
         Directory.CreateDirectory(outputPath!);
         var exitCode = 0;
+        var sawUnsupported = false;
+        var sawPartial = false;
+        var diagnosticEntries = new List<DiagnosticEntry>();
 
         foreach (var inputPath in inputPaths)
         {
             try
             {
                 var outFile = FileSystemBoundary.BuildOutputFilePath(inputPath, outputPath!);
+                using var publication = CreatePublication(outFile, context, CancellationToken.None, out var effectiveContext);
 
-                var request = new DocumentConversionRequest { FilePath = inputPath, LlmClient = llmClient, AssetBasePath = ComputeAssetPath(inputPath, outFile) };
+                var request = new DocumentConversionRequest { FilePath = inputPath, LlmClient = llmClient, AssetBasePath = publication?.AssetDirectory ?? ComputeAssetPath(inputPath, outFile, effectiveContext), Options = effectiveContext.Options, Context = effectiveContext };
                 var result = await engine.ConvertAsync(request);
 
                 await File.WriteAllTextAsync(outFile, result.Markdown);
+                if (publication is not null)
+                {
+                    publication.Complete();
+                    AssetPublication.CleanupOldPublications(publication);
+                }
+                diagnosticEntries.Add(new DiagnosticEntry(inputPath, outFile, result.FidelityStatus.ToString(), result.Diagnostics ?? Array.Empty<ConversionDiagnostic>(), result.Usage));
+                sawPartial |= result.FidelityStatus == FidelityStatus.Partial;
 
                 Console.WriteLine($"Converted: {inputPath} -> {outFile}");
             }
@@ -366,6 +433,9 @@ public static class CliRunner
             catch (UnsupportedFormatException ex)
             {
                 Console.Error.WriteLine($"Skipped: {ex.Message}");
+                sawUnsupported = true;
+                diagnosticEntries.Add(new DiagnosticEntry(inputPath, null, FidelityStatus.Failed.ToString(),
+                    [new ConversionDiagnostic("UNSUPPORTED_FORMAT", DiagnosticSeverity.Error, ex.Message)], new()));
             }
             catch (ConversionException ex)
             {
@@ -373,12 +443,16 @@ public static class CliRunner
                 exitCode = 2;
             }
         }
-
+        await WriteBatchDiagnosticsAsync(diagnosticEntries, context, CancellationToken.None);
+        if (exitCode == 0 && sawUnsupported) return 1;
+        if (exitCode == 0 && sawPartial && context.Properties.TryGetValue("failOnPartial", out var fail) && fail is true) return 3;
         return exitCode;
     }
 
-    private static string? ComputeAssetPath(string inputPath, string? outputPath)
+    private static string? ComputeAssetPath(string inputPath, string? outputPath, ConversionContext? context = null)
     {
+        if (context?.Properties.TryGetValue("assetsPath", out var configured) == true && configured is string configuredPath && !string.IsNullOrWhiteSpace(configuredPath))
+            return configuredPath;
         if (!string.IsNullOrWhiteSpace(outputPath))
         {
             var dir = Path.GetDirectoryName(Path.GetFullPath(outputPath));
@@ -391,6 +465,29 @@ public static class CliRunner
         return Path.Combine(inputDir ?? ".", inputStem + "_files");
     }
 
+    private static AssetPublicationLease? CreatePublication(
+        string? outputPath,
+        ConversionContext context,
+        CancellationToken cancellationToken,
+        out ConversionContext effectiveContext)
+    {
+        effectiveContext = context;
+        if (context.Pipeline != PipelineMode.Multimodal || string.IsNullOrWhiteSpace(outputPath)) return null;
+        if (context.Properties.TryGetValue("assetsPath", out var configured) && configured is string configuredPath && !string.IsNullOrWhiteSpace(configuredPath))
+            return null;
+        var fullOutput = Path.GetFullPath(outputPath);
+        var directory = Path.GetDirectoryName(fullOutput) ?? Environment.CurrentDirectory;
+        var stem = Path.GetFileNameWithoutExtension(fullOutput);
+        var root = Path.Combine(directory, stem + "_files");
+        var lease = AssetPublication.Acquire(root, fullOutput, cancellationToken);
+        var properties = new Dictionary<string, object?>(context.Properties)
+        {
+            ["assetPathPrefix"] = Path.GetRelativePath(directory, lease.AssetDirectory).Replace('\\', '/')
+        };
+        effectiveContext = context with { Properties = properties };
+        return lease;
+    }
+
     private static string BuildOutputFilePath(string inputPath, string outputPath)
     {
         return Path.Combine(outputPath, Path.GetFileNameWithoutExtension(inputPath) + ".md");
@@ -399,6 +496,142 @@ public static class CliRunner
     internal static string? FindDuplicateOutput(IEnumerable<string> inputPaths, string outputPath)
     {
         return FileSystemBoundary.FindDuplicateOutput(inputPaths, outputPath);
+    }
+
+    private static ConversionContext BuildContext(ParseResult parseResult)
+    {
+        var backendText = parseResult.GetValue(BackendOption) ?? "auto";
+        var visionText = parseResult.GetValue(VisionOption) ?? "auto";
+        if (!Enum.TryParse<ConversionBackendMode>(backendText, ignoreCase: true, out var backend))
+            throw new ConversionException($"Unknown backend '{backendText}'. Expected native, auto, or docling.");
+        if (!Enum.TryParse<VisionMode>(visionText, ignoreCase: true, out var vision))
+            throw new ConversionException($"Unknown vision mode '{visionText}'. Expected off, auto, or required.");
+        var pipelineText = parseResult.GetValue(PipelineOption) ?? "legacy";
+        if (!Enum.TryParse<PipelineMode>(pipelineText, ignoreCase: true, out var pipeline))
+            throw new ConversionException($"Unknown pipeline '{pipelineText}'. Expected legacy or multimodal.");
+        var explicitVision = parseResult.Tokens.Any(t => t.Value is "--vision");
+        var explicitUpload = parseResult.Tokens.Any(t => t.Value is "--allow-document-upload");
+        var explicitPartial = parseResult.Tokens.Any(t => t.Value is "--fail-on-partial");
+        var explicitDiagnostics = parseResult.Tokens.Any(t => t.Value is "--diagnostics" or "--report");
+        var explicitPipeline = parseResult.Tokens.Any(t => t.Value is "--pipeline");
+        if (backend == ConversionBackendMode.Docling && !explicitPipeline)
+            pipeline = PipelineMode.Multimodal;
+        if (backend == ConversionBackendMode.Docling && explicitPipeline && pipeline != PipelineMode.Multimodal)
+            throw new ConversionException("--backend docling requires --pipeline multimodal.");
+        if (pipeline == PipelineMode.Legacy && (explicitVision || explicitUpload || explicitPartial || explicitDiagnostics))
+            throw new ConversionException("--vision, --allow-document-upload, --fail-on-partial, and --diagnostics require --pipeline multimodal.");
+        var allowUpload = parseResult.GetValue(AllowDocumentUploadOption);
+        if (pipeline == PipelineMode.Multimodal && vision == VisionMode.Off && allowUpload)
+            throw new ConversionException("--allow-document-upload cannot be used with --vision off.");
+
+        var timeout = TimeSpan.FromMinutes(5);
+        var timeoutText = parseResult.GetValue(TimeoutOption);
+        if (!string.IsNullOrWhiteSpace(timeoutText) && (!TimeSpan.TryParse(timeoutText, out timeout) || timeout <= TimeSpan.Zero))
+            throw new ConversionException($"Invalid timeout '{timeoutText}'.");
+
+        var properties = new Dictionary<string, object?>
+        {
+            ["doclingMode"] = parseResult.GetValue(DoclingModeOption),
+            ["doclingEndpoint"] = parseResult.GetValue(DoclingEndpointOption),
+            ["reportPath"] = parseResult.GetValue(ReportOption),
+            ["assetsPath"] = parseResult.GetValue(AssetsOption),
+            ["failOnPartial"] = parseResult.GetValue(FailOnPartialOption)
+        };
+        var doclingMode = parseResult.GetValue(DoclingModeOption) ?? "process";
+        IDoclingTransport? doclingTransport = null;
+        if (pipeline == PipelineMode.Multimodal && vision != VisionMode.Off)
+        {
+            if (doclingMode.Equals("http", StringComparison.OrdinalIgnoreCase))
+            {
+                var endpoint = parseResult.GetValue(DoclingEndpointOption);
+                if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri))
+                    throw new ConversionException("--docling-endpoint must be an absolute HTTP(S) URI when --docling-mode http is used.");
+                doclingTransport = new HttpDoclingTransport(uri);
+            }
+            else if (doclingMode.Equals("process", StringComparison.OrdinalIgnoreCase))
+            {
+                var worker = Environment.GetEnvironmentVariable("MARKITDOWN_DOCLING_WORKER")
+                    ?? (File.Exists(Path.Combine(AppContext.BaseDirectory, "docling_worker.py"))
+                        ? Path.Combine(AppContext.BaseDirectory, "docling_worker.py")
+                        : Path.Combine(Environment.CurrentDirectory, "tools", "docling_worker.py"));
+                if (File.Exists(worker)) doclingTransport = new ProcessDoclingTransport("python", worker);
+            }
+            else
+            {
+                throw new ConversionException($"Unknown Docling mode '{doclingMode}'. Expected process or http.");
+            }
+        }
+        return new ConversionContext
+        {
+            Backend = backend,
+            Vision = vision,
+            Timeout = timeout,
+            MaxPages = parseResult.GetValue(MaxPagesOption),
+            MaxBytes = parseResult.GetValue(MaxBytesOption),
+            Properties = properties,
+            Pipeline = pipeline,
+            Options = new ConversionOptions
+            {
+                PipelineMode = pipeline,
+                VisionMode = pipeline == PipelineMode.Multimodal ? vision : null,
+                Privacy = new PrivacyOptions { AllowDocumentUpload = allowUpload },
+                DoclingTransport = doclingTransport
+            }
+        };
+    }
+
+    private static int GetResultExitCode(DocumentConversionResult result, ConversionContext context)
+    {
+        var failOnPartial = context.Properties.TryGetValue("failOnPartial", out var value) && value is true;
+        return failOnPartial && result.FidelityStatus == FidelityStatus.Partial ? 3 : 0;
+    }
+
+    private static async Task WriteDiagnosticsAsync(
+        DocumentConversionResult result,
+        string inputPath,
+        string? outputPath,
+        ConversionContext context,
+        CancellationToken cancellationToken)
+    {
+        if (!context.Properties.TryGetValue("reportPath", out var configured) || configured is not string reportPath || string.IsNullOrWhiteSpace(reportPath))
+            return;
+        var fullReport = Path.GetFullPath(reportPath);
+        if (!string.IsNullOrWhiteSpace(outputPath) &&
+            string.Equals(fullReport, Path.GetFullPath(outputPath), OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+            throw new ConversionException("Diagnostics path cannot be the same as the Markdown output path.");
+        await WriteBatchDiagnosticsAsync([new DiagnosticEntry(
+            inputPath,
+            outputPath,
+            result.FidelityStatus.ToString(),
+            result.Diagnostics ?? Array.Empty<ConversionDiagnostic>(),
+            result.Usage)], context, cancellationToken, outputPath);
+    }
+
+    private static async Task WriteBatchDiagnosticsAsync(
+        IReadOnlyList<DiagnosticEntry> entries,
+        ConversionContext context,
+        CancellationToken cancellationToken,
+        string? markdownOutputPath = null)
+    {
+        if (!context.Properties.TryGetValue("reportPath", out var configured) || configured is not string reportPath || string.IsNullOrWhiteSpace(reportPath))
+            return;
+        var fullReport = Path.GetFullPath(reportPath);
+        if (!string.IsNullOrWhiteSpace(markdownOutputPath) &&
+            string.Equals(fullReport, Path.GetFullPath(markdownOutputPath), OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+            throw new ConversionException("Diagnostics path cannot be the same as the Markdown output path.");
+        var document = new DiagnosticDocument("1", entries);
+        var directory = Path.GetDirectoryName(fullReport);
+        if (!string.IsNullOrWhiteSpace(directory)) Directory.CreateDirectory(directory);
+        var temp = fullReport + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            await File.WriteAllTextAsync(temp, JsonSerializer.Serialize(document, new JsonSerializerOptions { WriteIndented = true }), cancellationToken);
+            File.Move(temp, fullReport, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temp)) File.Delete(temp);
+        }
     }
 
     private static string[] GetSupportedFormats() =>
@@ -426,6 +659,18 @@ public static class CliRunner
         await writer.WriteLineAsync("  --llm-key        OpenAI API key (enables LLM captioning)");
         await writer.WriteLineAsync("  --llm-model      LLM model name (default: gpt-4o)");
         await writer.WriteLineAsync("  --llm-endpoint   Custom API endpoint (e.g. Azure OpenAI)");
+        await writer.WriteLineAsync("  --backend        native, auto, or docling (default: auto)");
+        await writer.WriteLineAsync("  --vision         off, auto, or required (default: auto)");
+        await writer.WriteLineAsync("  --docling-mode   process or http (default: process)");
+        await writer.WriteLineAsync("  --docling-endpoint Remote Docling HTTP endpoint");
+        await writer.WriteLineAsync("  --timeout        Conversion timeout");
+        await writer.WriteLineAsync("  --max-pages      Maximum pages");
+        await writer.WriteLineAsync("  --max-bytes      Maximum input bytes");
+        await writer.WriteLineAsync("  --report         Diagnostics JSON output");
+        await writer.WriteLineAsync("  --assets         Asset output directory");
+        await writer.WriteLineAsync("  --fail-on-partial Fail on partial fidelity");
+        await writer.WriteLineAsync("  --pipeline      legacy or multimodal (default: legacy)");
+        await writer.WriteLineAsync("  --allow-document-upload Allow document page upload");
         await writer.WriteLineAsync("  -h, --help       Show this help message");
         await writer.WriteLineAsync("  -V, --version    Show version number");
         await writer.WriteLineAsync();
@@ -443,3 +688,11 @@ public static class CliRunner
         await writer.WriteLineAsync("  markitdown photo.jpg --llm-key sk-...");
     }
 }
+
+internal sealed record DiagnosticDocument(string SchemaVersion, IReadOnlyList<DiagnosticEntry> Entries);
+internal sealed record DiagnosticEntry(
+    string Input,
+    string? Output,
+    string Status,
+    IReadOnlyList<ConversionDiagnostic> Diagnostics,
+    ConversionUsage Usage);

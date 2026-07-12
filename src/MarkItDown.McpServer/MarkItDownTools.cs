@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Reflection;
+using System.Security.Cryptography;
 using MarkItDown.Core;
 using ModelContextProtocol.Server;
 
@@ -10,6 +11,7 @@ public static class MarkItDownTools
 {
     private const string AllowedRootsEnvironmentVariable = "MARKITDOWN_MCP_ALLOWED_ROOTS";
     private static readonly Lazy<MarkItDownEngine> Engine = new(CreateEngine);
+    private static readonly ConversionAssetRegistry AssetRegistry = new();
 
     private static MarkItDownEngine CreateEngine()
     {
@@ -59,6 +61,76 @@ public static class MarkItDownTools
             return $"Error: Conversion failed: {ex.Message}";
         }
     }
+
+    [McpServerTool, Description("Converts a file using the multimodal pipeline and returns Markdown, diagnostics, fidelity status, and asset URIs.")]
+    public static DetailedConversionResponse ConvertToMarkdownDetailed(
+        [Description("Path to a file within an allowed MCP root")] string path,
+        [Description("Allow a configured vision provider to upload document pages when required")] bool allowDocumentUpload = false)
+    {
+        var operationId = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+        try
+        {
+            EnsurePathIsAllowed(path);
+            var vision = allowDocumentUpload ? VisionMode.Auto : VisionMode.Off;
+            var options = new ConversionOptions
+            {
+                PipelineMode = PipelineMode.Multimodal,
+                VisionMode = vision,
+                Privacy = new PrivacyOptions { AllowDocumentUpload = allowDocumentUpload }
+            };
+            var assetStore = new InMemoryAssetStore();
+            var result = Engine.Value.ConvertAsync(new DocumentConversionRequest
+            {
+                FilePath = path,
+                Options = options,
+                AssetStore = assetStore,
+                Context = new ConversionContext { OperationId = operationId }
+            }).GetAwaiter().GetResult();
+            var diagnostics = result.Diagnostics ?? Array.Empty<ConversionDiagnostic>();
+            AssetRegistry.Register(operationId, assetStore);
+            var assetUris = result.Assets.Select(a => $"markitdown://conversion/{operationId}/assets/{a.Id}").ToArray();
+            return new DetailedConversionResponse(result.FidelityStatus.ToString(), result.Markdown, assetUris, diagnostics, result.Usage);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (FileNotFoundException ex)
+        {
+            return Failed("FILE_NOT_FOUND", ex.Message, operationId);
+        }
+        catch (UnsupportedFormatException ex)
+        {
+            return Failed("UNSUPPORTED_FORMAT", ex.Message, operationId);
+        }
+        catch (ConversionException ex)
+        {
+            return Failed(ex.FailureReport?.Diagnostics.FirstOrDefault()?.Code ?? "CONVERSION_FAILED", ex.Message, operationId);
+        }
+    }
+
+    [McpServerTool, Description("Reads a temporary asset from a successful detailed conversion and returns its bytes as base64. The request never accepts a filesystem path.")]
+    public static string ReadConversionAsset(
+        [Description("256-bit conversion ID from the markitdown:// URI")] string conversionId,
+        [Description("Asset ID from the markitdown:// URI")] string assetId)
+    {
+        if (!IsOpaqueId(conversionId) || string.IsNullOrWhiteSpace(assetId))
+            return "Error: CONVERSION_NOT_FOUND";
+        return AssetRegistry.TryRead(conversionId, assetId, out var bytes)
+            ? Convert.ToBase64String(bytes)
+            : "Error: CONVERSION_NOT_FOUND";
+    }
+
+    internal static bool TryReadAsset(string conversionId, string assetId, out byte[] bytes)
+    {
+        bytes = [];
+        return IsOpaqueId(conversionId) && !string.IsNullOrWhiteSpace(assetId)
+            && AssetRegistry.TryRead(conversionId, assetId, out bytes);
+    }
+
+    private static bool IsOpaqueId(string value) => value.Length == 64 && value.All(Uri.IsHexDigit);
+
+    private static DetailedConversionResponse Failed(string code, string message, string operationId) =>
+        new("Failed", null, Array.Empty<string>(),
+            [new ConversionDiagnostic(code, DiagnosticSeverity.Error, message, AffectsSubstantiveContent: true, RequiresReview: true)],
+            new());
 
     private static void EnsurePathIsAllowed(string path)
     {
