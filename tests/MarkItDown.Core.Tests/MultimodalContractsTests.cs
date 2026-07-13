@@ -166,6 +166,26 @@ public sealed class MultimodalContractsTests
     }
 
     [Fact]
+    public async Task ConverterDocumentBackend_ForwardsStreamInput()
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("stream content"));
+        var backend = new ConverterDocumentBackend(new StubConverter(
+            ".txt",
+            convert: (request, _) =>
+            {
+                Assert.Same(stream, request.Stream);
+                return Task.FromResult(new DocumentConversionResult("Text", "stream content", Fidelity: FidelityStatus.Complete));
+            }));
+
+        var result = await backend.ConvertAsync(
+            new DocumentInput(null, "input.txt", "text/plain", stream.Length, stream),
+            new ConversionContext { Pipeline = PipelineMode.Multimodal });
+
+        Assert.Equal(FidelityStatus.Complete, result.Fidelity);
+        Assert.Equal("stream content", result.Document.Blocks[0].Text);
+    }
+
+    [Fact]
     public void DocumentInputMaterializer_CopiesStreamAndDeletesTemporaryFile()
     {
         using var materialized = DocumentInputMaterializer.Materialize(new DocumentConversionRequest

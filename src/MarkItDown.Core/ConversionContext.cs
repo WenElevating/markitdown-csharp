@@ -73,11 +73,14 @@ public sealed record ConversionContext
     public ConversionOptions Options { get; init; } = new();
     public string OperationId { get; init; } = Guid.NewGuid().ToString("N");
     public IVisionAnalyzer? VisionAnalyzer { get; init; }
+    public ILlmClient? LlmClient { get; init; }
+    public string? AssetBasePath { get; init; }
+    public int ContainerDepth { get; init; }
     public IAssetTransaction? AssetTransaction { get; init; }
     public IDictionary<string, object?> Properties { get; init; } = new Dictionary<string, object?>();
 }
 
-public sealed record DocumentInput(string? FilePath, string? Filename, string? MimeType, long? Length);
+public sealed record DocumentInput(string? FilePath, string? Filename, string? MimeType, long? Length, Stream? Stream = null);
 
 public enum FidelityStatus { Complete, Partial, Failed, NotEvaluated }
 public enum DiagnosticSeverity { Info, Warning, Error }

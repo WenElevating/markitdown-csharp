@@ -20,6 +20,10 @@ public sealed class ConverterDocumentBackend(IConverter converter) : IDocumentBa
             FilePath = input.FilePath,
             Filename = input.Filename,
             MimeType = input.MimeType,
+            Stream = input.Stream,
+            LlmClient = context.LlmClient,
+            AssetBasePath = context.AssetBasePath,
+            ContainerDepth = context.ContainerDepth,
             Options = context.Options,
             Context = context,
             AssetStore = context.Assets,
@@ -27,6 +31,6 @@ public sealed class ConverterDocumentBackend(IConverter converter) : IDocumentBa
         };
         var result = await converter.ConvertAsync(request, cancellationToken);
         var document = result.Document ?? DocumentModelBuilder.FromMarkdown(result.Kind, result.Markdown, result.FidelityStatus, result.Diagnostics);
-        return new BackendResult(document, result.FidelityStatus, result.Diagnostics);
+        return new BackendResult(document, result.FidelityStatus, result.Diagnostics, result);
     }
 }

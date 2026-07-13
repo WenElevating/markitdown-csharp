@@ -101,21 +101,26 @@ public sealed class MarkItDownEngine
         ValidateOptions(request, options);
         var resolvedVision = options.VisionMode ??
             (request.VisionAnalyzer is not null || request.LlmClient is not null ? VisionMode.Auto : VisionMode.Off);
+        var resolvedInput = new DocumentInput(
+            request.FilePath,
+            request.Filename ?? (request.FilePath is null ? null : Path.GetFileName(request.FilePath)),
+            request.MimeType,
+            request.Stream?.CanSeek == true ? request.Stream.Length : null,
+            request.Stream);
         var context = request.Context ?? new ConversionContext
         {
-            Input = new DocumentInput(
-                request.FilePath,
-                request.Filename ?? (request.FilePath is null ? null : Path.GetFileName(request.FilePath)),
-                request.MimeType,
-                request.Stream?.CanSeek == true ? request.Stream.Length : null)
+            Input = resolvedInput
         };
         context = context with
         {
-            Input = context.Input ?? new DocumentInput(
-                request.FilePath,
-                request.Filename ?? (request.FilePath is null ? null : Path.GetFileName(request.FilePath)),
-                request.MimeType,
-                request.Stream?.CanSeek == true ? request.Stream.Length : null),
+            Input = (context.Input ?? resolvedInput) with
+            {
+                FilePath = request.FilePath ?? context.Input?.FilePath,
+                Filename = request.Filename ?? context.Input?.Filename ?? resolvedInput.Filename,
+                MimeType = request.MimeType ?? context.Input?.MimeType,
+                Length = request.Stream?.CanSeek == true ? request.Stream.Length : context.Input?.Length,
+                Stream = request.Stream ?? context.Input?.Stream
+            },
             Options = options,
             Pipeline = options.PipelineMode,
             Vision = resolvedVision,
@@ -123,6 +128,9 @@ public sealed class MarkItDownEngine
                 (options.PipelineMode == PipelineMode.Multimodal && request.LlmClient is not null
                     ? new LlmVisionAnalyzerAdapter(request.LlmClient)
                     : null),
+            LlmClient = request.LlmClient ?? context.LlmClient,
+            AssetBasePath = request.AssetBasePath ?? context.AssetBasePath,
+            ContainerDepth = request.ContainerDepth,
             Privacy = options.Privacy.AllowDocumentUpload ? PrivacyMode.AllowConfiguredServices : context.Privacy,
             Assets = request.AssetStore ?? context.Assets
         };
@@ -144,9 +152,10 @@ public sealed class MarkItDownEngine
         timeout?.CancelAfter(context.Timeout);
         var effectiveCancellationToken = timeout?.Token ?? cancellationToken;
         request = request with { Context = context };
-        var converter = _registry.FindConverter(request);
-
-        if (converter is null)
+        var documentInput = context.Input!;
+        var router = new DocumentBackendRouter(
+            _registry.GetAllConverters().Select(converter => new ConverterDocumentBackend(converter)));
+        if (router.Select(documentInput, context.Backend) is null)
         {
             var extension = Path.GetExtension(request.Filename ?? request.FilePath);
             throw new UnsupportedFormatException(
@@ -155,7 +164,13 @@ public sealed class MarkItDownEngine
 
         try
         {
-            var result = await converter.ConvertAsync(request, effectiveCancellationToken);
+            var backendResult = await router.ConvertAsync(documentInput, context, effectiveCancellationToken);
+            var result = backendResult.Result ?? new DocumentConversionResult(
+                backendResult.Document.Kind,
+                MarkdownRenderer.Render(backendResult.Document),
+                Document: backendResult.Document,
+                Fidelity: backendResult.Fidelity,
+                Diagnostics: backendResult.Diagnostics);
             if (assetTransaction is not null)
             {
                 await assetTransaction.CommitAsync(effectiveCancellationToken);

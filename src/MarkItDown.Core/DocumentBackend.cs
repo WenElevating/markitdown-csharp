@@ -3,7 +3,8 @@ namespace MarkItDown.Core;
 public sealed record BackendResult(
     DocumentModel Document,
     FidelityStatus Fidelity,
-    IReadOnlyList<ConversionDiagnostic>? Diagnostics = null);
+    IReadOnlyList<ConversionDiagnostic>? Diagnostics = null,
+    DocumentConversionResult? Result = null);
 
 public interface IDocumentBackend
 {
