@@ -57,6 +57,24 @@ public sealed class XlsxConverterTests
     }
 
     [Fact]
+    public async Task ConvertAsync_UsesHtmlTableForMergedCells()
+    {
+        var xlsxPath = CreateMergedXlsx();
+        try
+        {
+            var result = await _converter.ConvertAsync(new DocumentConversionRequest { FilePath = xlsxPath });
+
+            Assert.Contains("<table>", result.Markdown);
+            Assert.Contains("Merged cells: A1:B1", result.Markdown);
+            Assert.DoesNotContain("| Name | Department |", result.Markdown);
+        }
+        finally
+        {
+            File.Delete(xlsxPath);
+        }
+    }
+
+    [Fact]
     public async Task ConvertAsync_MultimodalAddsDoclingSupplementAndCompletes()
     {
         var xlsxPath = CreateTestXlsx();
@@ -218,6 +236,16 @@ public sealed class XlsxConverterTests
         });
 
         workbookPart.Workbook.Save();
+        return path;
+    }
+
+    private static string CreateMergedXlsx()
+    {
+        var path = CreateTestXlsx();
+        using var doc = SpreadsheetDocument.Open(path, true);
+        var worksheet = doc.WorkbookPart!.WorksheetParts.First().Worksheet!;
+        worksheet.AppendChild(new MergeCells(new MergeCell { Reference = "A1:B1" }));
+        worksheet.Save();
         return path;
     }
 

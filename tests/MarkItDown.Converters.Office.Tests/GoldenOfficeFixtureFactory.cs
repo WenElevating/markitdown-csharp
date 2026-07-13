@@ -30,6 +30,8 @@ internal static class GoldenOfficeFixtureFactory
         main.Document = new Document(new Body(
             Paragraph("Golden DOCX", "Heading2"),
             new Paragraph(new W.Run(new W.Text("Golden DOCX body")))));
+        var image = main.AddImagePart(ImagePartType.Png);
+        image.FeedData(new MemoryStream(PngBytes()));
         main.Document.Save();
     }
 
@@ -39,6 +41,8 @@ internal static class GoldenOfficeFixtureFactory
         var presentationPart = document.AddPresentationPart();
         presentationPart.Presentation = new Presentation();
         var slidePart = presentationPart.AddNewPart<SlidePart>();
+        var image = slidePart.AddImagePart(ImagePartType.Png);
+        image.FeedData(new MemoryStream(PngBytes()));
         slidePart.Slide = new Slide(
             new CommonSlideData(new ShapeTree(
                 new NonVisualGroupShapeProperties(new NonVisualDrawingProperties { Id = 1, Name = "" }),
@@ -57,6 +61,8 @@ internal static class GoldenOfficeFixtureFactory
         var workbookPart = document.AddWorkbookPart();
         workbookPart.Workbook = new Workbook();
         var worksheetPart = workbookPart.AddNewPart<WorksheetPart>();
+        var image = worksheetPart.AddImagePart(ImagePartType.Png);
+        image.FeedData(new MemoryStream(PngBytes()));
         var sheetData = new SheetData(
             new Row(new Cell { CellReference = "A1", CellValue = new CellValue("Name"), DataType = CellValues.String }, new Cell { CellReference = "B1", CellValue = new CellValue("Department"), DataType = CellValues.String }),
             new Row(new Cell { CellReference = "A2", CellValue = new CellValue("Alice"), DataType = CellValues.String }, new Cell { CellReference = "B2", CellValue = new CellValue("Engineering"), DataType = CellValues.String }));
@@ -92,4 +98,7 @@ internal static class GoldenOfficeFixtureFactory
             new ShapeProperties(new A.Transform2D(new A.Offset { X = 0, Y = 0 }, new A.Extents { Cx = 9144000, Cy = 4572000 })),
             textBody);
     }
+
+    private static byte[] PngBytes() => Convert.FromBase64String(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
 }

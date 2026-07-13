@@ -21,13 +21,17 @@ public sealed class GoldenCorpusOfficeTests
                 "xlsx" => new XlsxConverter(),
                 _ => throw new ArgumentOutOfRangeException(nameof(format))
             };
-            var result = await converter.ConvertAsync(new DocumentConversionRequest
+            var store = new InMemoryAssetStore();
+            var engine = new MarkItDownEngine(builder => builder.Add(converter));
+            var result = await engine.ConvertAsync(new DocumentConversionRequest
             {
                 FilePath = path,
+                AssetStore = store,
                 Context = new ConversionContext
                 {
                     Pipeline = PipelineMode.Multimodal,
                     Vision = VisionMode.Off,
+                    Assets = store,
                     Options = new ConversionOptions { PipelineMode = PipelineMode.Multimodal, VisionMode = VisionMode.Off }
                 }
             });
@@ -49,6 +53,9 @@ public sealed class GoldenCorpusOfficeTests
 
             Assert.Equal(FidelityStatus.Complete, result.FidelityStatus);
             Assert.True(report.Passed, JsonSerializer.Serialize(report));
+            Assert.Contains("asset://", result.Markdown, StringComparison.Ordinal);
+            foreach (var asset in store.Assets)
+                Assert.True(store.TryGetBytes(asset.Id, out var bytes) && bytes.Length == asset.Size);
             Assert.True(report.TextRecall >= thresholds.GetProperty("minTextRecall").GetDouble());
             Assert.True(report.HeadingAccuracy >= thresholds.GetProperty("minHeadingAccuracy").GetDouble());
             Assert.True(report.TableCellRecall >= thresholds.GetProperty("minTableCellRecall").GetDouble());

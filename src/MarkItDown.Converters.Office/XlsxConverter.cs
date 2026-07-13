@@ -57,7 +57,7 @@ public sealed class XlsxConverter : BaseConverter
                     nativeBlocks.Add(new DocumentBlock(
                         "heading", sheetName, source,
                         new Dictionary<string, string> { ["level"] = "2" }));
-                    var builder = new StringBuilder();
+                    var data = new List<List<string>>();
 
                     var hiddenRows = rows.Where(row => row.Hidden?.Value == true).Select(row => row.RowIndex?.Value).Where(index => index is not null).ToArray();
                     if (hiddenRows.Length > 0)
@@ -76,12 +76,10 @@ public sealed class XlsxConverter : BaseConverter
 
                     // First row = header
                     var headerCells = rows[0].Elements<Cell>().ToList();
-                    var header = headerCells.Select(c => EscapePipe(GetCellValue(c, sharedStrings))).ToList();
+                    var header = headerCells.Select(c => GetCellValue(c, sharedStrings)).ToList();
                     var colCount = header.Count;
                     if (colCount == 0) continue;
-
-                    builder.AppendLine($"| {string.Join(" | ", header)} |");
-                    builder.AppendLine($"| {string.Join(" | ", Enumerable.Repeat("---", colCount))} |");
+                    data.Add(header);
 
                     // Data rows
                     foreach (var row in rows.Skip(1))
@@ -93,15 +91,17 @@ public sealed class XlsxConverter : BaseConverter
                         {
                             var cell = cells.FirstOrDefault(c =>
                                 GetColumnIndex(c.CellReference?.Value) == i + 1);
-                            fields.Add(EscapePipe(cell is not null
+                            fields.Add(cell is not null
                                 ? GetCellValue(cell, sharedStrings)
-                                : string.Empty));
+                                : string.Empty);
                         }
-
-                        builder.AppendLine($"| {string.Join(" | ", fields)} |");
+                        data.Add(fields);
                     }
 
-                    nativeBlocks.Add(new DocumentBlock("table", builder.ToString().TrimEnd(), source));
+                    var table = mergedRanges.Length > 0
+                        ? RenderHtmlTable(data)
+                        : RenderMarkdownTable(data);
+                    nativeBlocks.Add(new DocumentBlock("table", table, source));
                 }
 
                 var images = OfficeAssetExtractor.Extract(
@@ -173,4 +173,31 @@ public sealed class XlsxConverter : BaseConverter
 
     private static string EscapePipe(string value) =>
         value.Replace("|", "\\|").Replace("\n", " ").Replace("\r", "");
+
+    private static string RenderMarkdownTable(IReadOnlyList<List<string>> rows)
+    {
+        var columnCount = rows[0].Count;
+        var builder = new StringBuilder();
+        builder.AppendLine($"| {string.Join(" | ", rows[0].Select(EscapePipe))} |");
+        builder.AppendLine($"| {string.Join(" | ", Enumerable.Repeat("---", columnCount))} |");
+        foreach (var row in rows.Skip(1))
+            builder.AppendLine($"| {string.Join(" | ", row.Select(EscapePipe))} |");
+        return builder.ToString().TrimEnd();
+    }
+
+    private static string RenderHtmlTable(IReadOnlyList<List<string>> rows)
+    {
+        var builder = new StringBuilder("<table>\n  <thead><tr>");
+        foreach (var cell in rows[0])
+            builder.Append("<th>").Append(System.Net.WebUtility.HtmlEncode(cell)).Append("</th>");
+        builder.AppendLine("</tr></thead>\n  <tbody>");
+        foreach (var row in rows.Skip(1))
+        {
+            builder.Append("    <tr>");
+            foreach (var cell in row)
+                builder.Append("<td>").Append(System.Net.WebUtility.HtmlEncode(cell)).Append("</td>");
+            builder.AppendLine("</tr>");
+        }
+        return builder.Append("  </tbody>\n</table>").ToString();
+    }
 }
