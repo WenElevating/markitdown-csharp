@@ -37,6 +37,30 @@ public sealed class GoldenCorpusOfficeTests
         }
     }
 
+    [Fact]
+    public async Task GeneratedDocxTextBox_IsPreservedAsText()
+    {
+        var path = GoldenOfficeFixtureFactory.Create("docx-textbox");
+        try
+        {
+            var store = new InMemoryAssetStore();
+            var options = new ConversionOptions { PipelineMode = PipelineMode.Multimodal, VisionMode = VisionMode.Off };
+            var result = await new MarkItDownEngine(builder => builder.Add(new DocxConverter())).ConvertAsync(new DocumentConversionRequest
+            {
+                FilePath = path,
+                AssetStore = store,
+                Options = options,
+                Context = new ConversionContext { Pipeline = PipelineMode.Multimodal, Vision = VisionMode.Off, Assets = store, Options = options }
+            });
+
+            Assert.Contains("Golden floating text box", result.Markdown, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     [Theory]
     [InlineData("docx")]
     [InlineData("pptx")]

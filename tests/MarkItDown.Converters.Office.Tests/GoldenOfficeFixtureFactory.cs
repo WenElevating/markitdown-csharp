@@ -14,12 +14,13 @@ internal static class GoldenOfficeFixtureFactory
 {
     public static string Create(string format)
     {
-        var extension = format == "docx-floating" ? "docx" : format;
+        var extension = format is "docx-floating" or "docx-textbox" ? "docx" : format;
         var path = Path.Combine(Path.GetTempPath(), $"golden-{format}-{Guid.NewGuid():N}.{extension}");
         switch (format)
         {
-            case "docx": CreateDocx(path, floatingImage: false); break;
-            case "docx-floating": CreateDocx(path, floatingImage: true); break;
+            case "docx": CreateDocx(path, floatingImage: false, textBox: false); break;
+            case "docx-floating": CreateDocx(path, floatingImage: true, textBox: false); break;
+            case "docx-textbox": CreateDocx(path, floatingImage: false, textBox: true); break;
             case "pptx": CreatePptx(path); break;
             case "xlsx": CreateXlsx(path); break;
             default: throw new ArgumentOutOfRangeException(nameof(format));
@@ -27,7 +28,7 @@ internal static class GoldenOfficeFixtureFactory
         return path;
     }
 
-    private static void CreateDocx(string path, bool floatingImage)
+    private static void CreateDocx(string path, bool floatingImage, bool textBox)
     {
         string imageRelationshipId;
         using var document = WordprocessingDocument.Create(path, WordprocessingDocumentType.Document);
@@ -44,6 +45,8 @@ internal static class GoldenOfficeFixtureFactory
         document.Dispose();
         if (floatingImage)
             InjectFloatingImage(path, imageRelationshipId);
+        if (textBox)
+            InjectTextBox(path);
     }
 
     private static void InjectFloatingImage(string path, string relationshipId)
@@ -59,6 +62,22 @@ internal static class GoldenOfficeFixtureFactory
             """;
         xml = xml.Replace("<w:body>", $"<w:body>{drawing}", StringComparison.Ordinal);
 
+        entry.Delete();
+        var replacement = archive.CreateEntry("word/document.xml");
+        using var writer = new StreamWriter(replacement.Open());
+        writer.Write(xml);
+    }
+
+    private static void InjectTextBox(string path)
+    {
+        using var archive = ZipFile.Open(path, ZipArchiveMode.Update);
+        var entry = archive.GetEntry("word/document.xml") ?? throw new InvalidOperationException("Generated DOCX is missing word/document.xml.");
+        string xml;
+        using (var reader = new StreamReader(entry.Open()))
+            xml = reader.ReadToEnd();
+
+        const string textBox = "<w:p><w:r><w:pict xmlns:v=\"urn:schemas-microsoft-com:vml\"><v:shape id=\"TextBox1\" style=\"width:100pt;height:30pt\"><v:textbox><w:txbxContent><w:p><w:r><w:t>Golden floating text box</w:t></w:r></w:p></w:txbxContent></v:textbox></v:shape></w:pict></w:r></w:p>";
+        xml = xml.Replace("<w:body>", $"<w:body>{textBox}", StringComparison.Ordinal);
         entry.Delete();
         var replacement = archive.CreateEntry("word/document.xml");
         using var writer = new StreamWriter(replacement.Open());

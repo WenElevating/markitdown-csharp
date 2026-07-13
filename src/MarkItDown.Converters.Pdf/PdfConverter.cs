@@ -27,6 +27,13 @@ public sealed class PdfConverter : BaseConverter
             var totalLetters = pages.Sum(p => p.Letters.Count);
             var hasImages = pages.Any(p => p.GetImages().Any());
 
+            if (totalLetters < 20
+                && hasImages
+                && request.Context?.Pipeline == PipelineMode.Multimodal
+                && request.Context.Backend != ConversionBackendMode.Native
+                && request.Context.Options.DoclingTransport is not null)
+                return ConvertWithDoclingFallbackAsync(request with { FilePath = input.FilePath }, request.Context.Options.DoclingTransport, cancellationToken);
+
             if (totalLetters < 20 && !hasImages)
             {
                 if (request.Context?.Pipeline == PipelineMode.Multimodal
