@@ -87,7 +87,8 @@ public static class MarkItDownTools
                 Context = new ConversionContext { OperationId = operationId }
             }).GetAwaiter().GetResult();
             var diagnostics = result.Diagnostics ?? Array.Empty<ConversionDiagnostic>();
-            AssetRegistry.Register(operationId, assetStore);
+            if (!AssetRegistry.TryRegister(operationId, assetStore))
+                return Failed("RESOURCE_LIMIT_EXCEEDED", "MCP conversion resource quota exceeded.", operationId);
             var assetUris = result.Assets.Select(a => $"markitdown://conversion/{operationId}/assets/{a.Id}").ToArray();
             return new DetailedConversionResponse(result.FidelityStatus.ToString(), result.Markdown, assetUris, diagnostics, result.Usage);
         }
