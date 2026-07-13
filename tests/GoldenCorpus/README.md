@@ -1,8 +1,15 @@
 # Multimodal Golden Corpus
 
-This corpus is the deterministic baseline for the shared PDF/DOCX/PPTX/XLSX pipeline.
-Each entry should eventually contain the source fixture, normalized `DocumentModel`
-JSON, Markdown snapshot, asset manifest, source locations, and expected diagnostics.
+This corpus is the executable deterministic baseline for the shared
+PDF/DOCX/PPTX/XLSX pipeline. `manifest.json` defines required text, heading,
+table-cell, asset, and diagnostic expectations plus hard quality thresholds.
 
-The initial manifest reuses the repository's checked-in fixtures so the corpus gate
-can be expanded without changing the existing converter fixtures.
+The Office entries use deterministic Open XML generators in
+`MarkItDown.Converters.Office.Tests`; they contain embedded PNG assets and
+ChartPart caches. The PDF entries reuse checked-in fixtures. Each Office corpus
+case runs through `MarkItDownEngine`, validates the normalized `DocumentModel`,
+checks asset bytes, and applies the quality evaluator.
+
+The corpus is intentionally not a substitute for a large licensed production
+benchmark. Real Word text-box variants, vendor-specific chart extensions, OCR
+CER calibration, and large-scale labeled recall remain separate release gates.
