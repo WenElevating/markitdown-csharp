@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using MarkItDown.Core;
 
 namespace MarkItDown.Core.Tests;
@@ -183,6 +184,78 @@ public sealed class MultimodalContractsTests
 
         Assert.Equal(FidelityStatus.Complete, result.Fidelity);
         Assert.Equal("stream content", result.Document.Blocks[0].Text);
+    }
+
+    [Fact]
+    public async Task ProcessDoclingTransport_ReusesJsonLinesWorker()
+    {
+        var scriptPath = Path.Combine(Path.GetTempPath(), $"docling-worker-{Guid.NewGuid():N}.ps1");
+        await File.WriteAllTextAsync(scriptPath, """
+            while (($line = [Console]::In.ReadLine()) -ne $null) {
+              $request = $line | ConvertFrom-Json
+              $response = [ordered]@{
+                requestId = $request.requestId
+                protocolVersion = '1'
+                success = $true
+                documentJson = '{"texts":[{"text":"worker response"}]}'
+              }
+              [Console]::WriteLine(($response | ConvertTo-Json -Compress))
+              [Console]::Out.Flush()
+            }
+            """);
+        try
+        {
+            await using var transport = new ProcessDoclingTransport(
+                "pwsh", scriptPath, TimeSpan.FromSeconds(10));
+            var first = await transport.SendAsync(new DoclingRequest("one", "1", "a.pdf", "application/pdf", "AQ=="));
+            var second = await transport.SendAsync(new DoclingRequest("two", "1", "b.pdf", "application/pdf", "Ag=="));
+
+            Assert.True(first.Success);
+            Assert.True(second.Success);
+            Assert.Equal("one", first.RequestId);
+            Assert.Equal("two", second.RequestId);
+            Assert.Equal(first.DocumentJson, second.DocumentJson);
+        }
+        finally
+        {
+            File.Delete(scriptPath);
+        }
+    }
+
+    [Fact]
+    public async Task ProcessDoclingTransport_RestartsWorkerAfterCrash()
+    {
+        var scriptPath = Path.Combine(Path.GetTempPath(), $"docling-worker-{Guid.NewGuid():N}.ps1");
+        var markerPath = Path.Combine(Path.GetTempPath(), $"docling-worker-marker-{Guid.NewGuid():N}");
+        var escapedMarker = markerPath.Replace("'", "''", StringComparison.Ordinal);
+        var script = """
+            $marker = '__MARKER__'
+            while (($line = [Console]::In.ReadLine()) -ne $null) {
+              $request = $line | ConvertFrom-Json
+              if ($request.requestId -eq 'crash' -and -not (Test-Path $marker)) {
+                Set-Content -Path $marker -Value 'crashed'
+                exit 7
+              }
+              $response = [ordered]@{ requestId = $request.requestId; protocolVersion = '1'; success = $true; documentJson = '{"texts":[{"text":"recovered"}]}' }
+              [Console]::WriteLine(($response | ConvertTo-Json -Compress))
+              [Console]::Out.Flush()
+            }
+            """.Replace("__MARKER__", escapedMarker, StringComparison.Ordinal);
+        await File.WriteAllTextAsync(scriptPath, script);
+        try
+        {
+            await using var transport = new ProcessDoclingTransport(
+                "pwsh", scriptPath, TimeSpan.FromSeconds(10));
+            var response = await transport.SendAsync(new DoclingRequest("crash", "1", "a.pdf", "application/pdf", "AQ=="));
+
+            Assert.True(response.Success);
+            Assert.Equal("recovered", JsonDocument.Parse(response.DocumentJson!).RootElement.GetProperty("texts")[0].GetProperty("text").GetString());
+        }
+        finally
+        {
+            File.Delete(scriptPath);
+            File.Delete(markerPath);
+        }
     }
 
     [Fact]
