@@ -1,4 +1,5 @@
 using System.Collections.Frozen;
+using System.Text;
 using MarkItDown.Core;
 using NPOI.HWPF;
 
@@ -10,6 +11,11 @@ namespace MarkItDown.Converters.Office;
 /// </summary>
 public sealed class DocConverter : BaseConverter
 {
+    static DocConverter()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+    }
+
     private static readonly FrozenSet<string> Extensions =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".doc" }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
