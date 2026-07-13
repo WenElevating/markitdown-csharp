@@ -116,7 +116,7 @@ public sealed class CliRunnerTests
     [Fact]
     public async Task Cli_MultimodalScannedPdf_PreservesNativeImageExtraction()
     {
-        var result = await RunCliAsync(FixturePath.For("scanned.pdf"), "--pipeline", "multimodal", "--vision", "auto");
+        var result = await RunCliAsync(FixturePath.For("scanned.pdf"), "--backend", "native", "--pipeline", "multimodal", "--vision", "auto");
 
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("![image]", result.Stdout);
