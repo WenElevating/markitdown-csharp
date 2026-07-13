@@ -90,6 +90,13 @@ public sealed class PptxConverter : BaseConverter
                         nativeBlocks.Add(new DocumentBlock("note", $"> {string.Join(" ", notesText)}", source));
                     }
 
+                    foreach (var chartPart in slidePart.ChartParts)
+                    {
+                        var chart = chartPart.ChartSpace is null ? string.Empty : OfficeChartExtractor.Extract(chartPart.ChartSpace);
+                        if (!string.IsNullOrWhiteSpace(chart))
+                            nativeBlocks.Add(new DocumentBlock("table", chart, source));
+                    }
+
                     if (slideIndex < slideParts.Count - 1 && nativeBlocks.Count > 0)
                         nativeBlocks.Add(new DocumentBlock("pagebreak", "---", source));
                 }

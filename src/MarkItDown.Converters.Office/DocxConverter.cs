@@ -60,6 +60,12 @@ public sealed class DocxConverter : BaseConverter
                 AppendSupplement(blocks, "Footnotes", doc.MainDocumentPart?.FootnotesPart?.Footnotes?.Descendants<Paragraph>());
                 AppendSupplement(blocks, "Endnotes", doc.MainDocumentPart?.EndnotesPart?.Endnotes?.Descendants<Paragraph>());
                 AppendSupplement(blocks, "Review comments", doc.MainDocumentPart?.WordprocessingCommentsPart?.Comments?.Descendants<Comment>());
+                foreach (var chartPart in doc.MainDocumentPart?.ChartParts ?? [])
+                {
+                    var chart = chartPart.ChartSpace is null ? string.Empty : OfficeChartExtractor.Extract(chartPart.ChartSpace);
+                    if (!string.IsNullOrWhiteSpace(chart))
+                        blocks.Add($"## Chart{Environment.NewLine}{Environment.NewLine}{chart}");
+                }
 
                 var markdown = string.Join(Environment.NewLine + Environment.NewLine,
                     blocks.Where(b => !string.IsNullOrWhiteSpace(b))).Trim();

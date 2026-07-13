@@ -102,6 +102,13 @@ public sealed class XlsxConverter : BaseConverter
                         ? RenderHtmlTable(data)
                         : RenderMarkdownTable(data);
                     nativeBlocks.Add(new DocumentBlock("table", table, source));
+
+                    foreach (var chartPart in worksheetPart.DrawingsPart?.ChartParts ?? [])
+                    {
+                        var chart = chartPart.ChartSpace is null ? string.Empty : OfficeChartExtractor.Extract(chartPart.ChartSpace);
+                        if (!string.IsNullOrWhiteSpace(chart))
+                            nativeBlocks.Add(new DocumentBlock("table", chart, source));
+                    }
                 }
 
                 var images = OfficeAssetExtractor.Extract(
