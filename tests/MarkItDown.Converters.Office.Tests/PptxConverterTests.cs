@@ -32,6 +32,7 @@ public sealed class PptxConverterTests
             Assert.Contains("First point", result.Markdown);
             Assert.Equal("Pptx", result.Kind);
             Assert.Equal(1, result.Document!.Blocks.First(block => block.Kind == "heading").Source!.Slide);
+            Assert.Equal(10, result.Document.Blocks.First(block => block.Kind == "heading").Source!.Right);
         }
         finally
         {

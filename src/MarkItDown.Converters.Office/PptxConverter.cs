@@ -54,6 +54,7 @@ public sealed class PptxConverter : BaseConverter
                     {
                         var text = ExtractShapeText(shape);
                         if (string.IsNullOrWhiteSpace(text)) continue;
+                        var shapeSource = GetShapeSource(shape, source);
 
                         var placeholderType = shape.NonVisualShapeProperties?
                             .ApplicationNonVisualDrawingProperties?
@@ -63,7 +64,7 @@ public sealed class PptxConverter : BaseConverter
                             placeholderType == PlaceholderValues.CenteredTitle)
                         {
                             nativeBlocks.Add(new DocumentBlock(
-                                "heading", text.Trim(), source,
+                                "heading", text.Trim(), shapeSource,
                                 new Dictionary<string, string> { ["level"] = "2" }));
                         }
                         else
@@ -74,7 +75,7 @@ public sealed class PptxConverter : BaseConverter
                             {
                                 var trimmed = line.Trim();
                                 if (!string.IsNullOrWhiteSpace(trimmed))
-                                    nativeBlocks.Add(new DocumentBlock("list", $"- {trimmed}", source));
+                                    nativeBlocks.Add(new DocumentBlock("list", $"- {trimmed}", shapeSource));
                             }
                         }
                     }
@@ -124,5 +125,19 @@ public sealed class PptxConverter : BaseConverter
     {
         var texts = shape.Descendants<A.Text>().Select(t => t.Text);
         return string.Join("", texts);
+    }
+
+    private static SourceLocation GetShapeSource(Shape shape, SourceLocation slideSource)
+    {
+        var transform = shape.ShapeProperties?.Transform2D;
+        if (transform?.Offset is null || transform.Extents is null) return slideSource;
+        const double EmuPerInch = 914400d;
+        return slideSource with
+        {
+            Left = transform.Offset.X?.Value / EmuPerInch,
+            Top = transform.Offset.Y?.Value / EmuPerInch,
+            Right = (transform.Offset.X?.Value + transform.Extents.Cx?.Value) / EmuPerInch,
+            Bottom = (transform.Offset.Y?.Value + transform.Extents.Cy?.Value) / EmuPerInch
+        };
     }
 }

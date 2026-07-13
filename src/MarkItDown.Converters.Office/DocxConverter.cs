@@ -73,6 +73,13 @@ public sealed class DocxConverter : BaseConverter
                     ? FidelityStatus.Complete
                     : FidelityStatus.NotEvaluated;
                 var document = DocumentModelBuilder.FromMarkdown("Docx", markdown, fidelity);
+                document = document with
+                {
+                    Blocks = document.Blocks.Select((block, index) => block with
+                    {
+                        Source = block.Source ?? new SourceLocation(Part: "word/document.xml", Index: index)
+                    }).ToArray()
+                };
                 return await OfficeDoclingEnhancer.EnhanceAsync(
                     "Docx", request, input.FilePath, document, cancellationToken);
             }

@@ -32,6 +32,7 @@ public sealed class DocxConverterTests
             Assert.Contains("- Item 1", result.Markdown);
             Assert.Contains("| Header A | Header B |", result.Markdown);
             Assert.Equal("Docx", result.Kind);
+            Assert.Equal("word/document.xml", result.Document!.Blocks.First(block => block.Kind == "heading").Source!.Part);
         }
         finally
         {
