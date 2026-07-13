@@ -31,6 +31,7 @@ public sealed class XlsxConverterTests
             Assert.Contains("| Alice | Engineering | 95000 |", result.Markdown);
             Assert.Contains("| Bob | Marketing | 72000 |", result.Markdown);
             Assert.Equal("Xlsx", result.Kind);
+            Assert.Equal("Employees", result.Document!.Blocks.First(block => block.Kind == "heading").Source!.Sheet);
         }
         finally
         {
@@ -48,6 +49,87 @@ public sealed class XlsxConverterTests
                 new DocumentConversionRequest { FilePath = xlsxPath });
             // Should not crash on empty workbook
             Assert.NotNull(result.Markdown);
+        }
+        finally
+        {
+            File.Delete(xlsxPath);
+        }
+    }
+
+    [Fact]
+    public async Task ConvertAsync_MultimodalAddsDoclingSupplementAndCompletes()
+    {
+        var xlsxPath = CreateTestXlsx();
+        try
+        {
+            var result = await _converter.ConvertAsync(new DocumentConversionRequest
+            {
+                FilePath = xlsxPath,
+                Context = new ConversionContext
+                {
+                    Pipeline = PipelineMode.Multimodal,
+                    Vision = VisionMode.Auto,
+                    Options = new ConversionOptions { PipelineMode = PipelineMode.Multimodal, VisionMode = VisionMode.Auto, DoclingTransport = new FakeDoclingTransport() }
+                }
+            });
+
+            Assert.Equal(FidelityStatus.Complete, result.FidelityStatus);
+            Assert.Contains("| Alice | Engineering | 95000 |", result.Markdown);
+            Assert.Contains("Visual table insight", result.Markdown);
+            Assert.DoesNotContain(result.Diagnostics ?? [], d => d.Code == "MULTIMODAL_FORMAT_UNSUPPORTED");
+            Assert.NotEmpty(result.Document?.Supplements ?? []);
+        }
+        finally
+        {
+            File.Delete(xlsxPath);
+        }
+    }
+
+    [Fact]
+    public async Task ConvertAsync_RequiredVisionFailsWhenDoclingIsUnavailable()
+    {
+        var xlsxPath = CreateTestXlsx();
+        try
+        {
+            var exception = await Assert.ThrowsAsync<ConversionException>(() => _converter.ConvertAsync(new DocumentConversionRequest
+            {
+                FilePath = xlsxPath,
+                Context = new ConversionContext
+                {
+                    Pipeline = PipelineMode.Multimodal,
+                    Vision = VisionMode.Required,
+                    Options = new ConversionOptions { PipelineMode = PipelineMode.Multimodal, VisionMode = VisionMode.Required }
+                }
+            }));
+
+            Assert.Equal("DOCLING_REQUIRED_FAILED", exception.FailureReport!.Diagnostics[0].Code);
+        }
+        finally
+        {
+            File.Delete(xlsxPath);
+        }
+    }
+
+    [Fact]
+    public async Task ConvertAsync_NativeBackendDoesNotInvokeDocling()
+    {
+        var xlsxPath = CreateTestXlsx();
+        try
+        {
+            var result = await _converter.ConvertAsync(new DocumentConversionRequest
+            {
+                FilePath = xlsxPath,
+                Context = new ConversionContext
+                {
+                    Backend = ConversionBackendMode.Native,
+                    Pipeline = PipelineMode.Multimodal,
+                    Vision = VisionMode.Required,
+                    Options = new ConversionOptions { PipelineMode = PipelineMode.Multimodal, VisionMode = VisionMode.Required, DoclingTransport = new FailingDoclingTransport() }
+                }
+            });
+
+            Assert.Equal(FidelityStatus.Complete, result.FidelityStatus);
+            Assert.Contains("| Alice | Engineering | 95000 |", result.Markdown);
         }
         finally
         {
@@ -101,6 +183,19 @@ public sealed class XlsxConverterTests
 
         workbookPart.Workbook.Save();
         return path;
+    }
+
+    private sealed class FakeDoclingTransport : IDoclingTransport
+    {
+        public Task<DoclingResponse> SendAsync(DoclingRequest request, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new DoclingResponse(request.RequestId, "1", true,
+                "{\"texts\":[{\"text\":\"Visual table insight\"}]}", null, null));
+    }
+
+    private sealed class FailingDoclingTransport : IDoclingTransport
+    {
+        public Task<DoclingResponse> SendAsync(DoclingRequest request, CancellationToken cancellationToken = default) =>
+            throw new IOException("must not be called");
     }
 
     private static string CreateEmptyXlsx()

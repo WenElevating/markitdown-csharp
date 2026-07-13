@@ -29,9 +29,12 @@ public sealed class PdfConverter : BaseConverter
 
             if (totalLetters < 20 && !hasImages)
             {
-                if (request.Context?.Pipeline == PipelineMode.Multimodal && request.Context.Options.DoclingTransport is not null)
+                if (request.Context?.Pipeline == PipelineMode.Multimodal
+                    && request.Context.Backend != ConversionBackendMode.Native
+                    && request.Context.Options.DoclingTransport is not null)
                     return ConvertWithDoclingFallbackAsync(request with { FilePath = input.FilePath }, request.Context.Options.DoclingTransport, cancellationToken);
-                if (request.Context?.Pipeline == PipelineMode.Multimodal)
+                if (request.Context?.Pipeline == PipelineMode.Multimodal
+                    && request.Context.Backend != ConversionBackendMode.Native)
                 {
                     var diagnostic = new ConversionDiagnostic(
                         "VISION_PROVIDER_UNAVAILABLE",

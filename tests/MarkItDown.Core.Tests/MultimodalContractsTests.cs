@@ -136,7 +136,24 @@ public sealed class MultimodalContractsTests
     public async Task Engine_MultimodalUnsupportedFormatIsNotEvaluatedWithDiagnostic()
     {
         var engine = new MarkItDownEngine(builder => builder.Add(new StubConverter(
-            ".pptx", convert: (_, _) => Task.FromResult(new DocumentConversionResult("Pptx", "slide")))));
+            ".txt", convert: (_, _) => Task.FromResult(new DocumentConversionResult("Text", "slide")))));
+
+        var result = await engine.ConvertAsync(new DocumentConversionRequest
+        {
+            FilePath = "test.txt",
+            Options = new ConversionOptions { PipelineMode = PipelineMode.Multimodal }
+        });
+
+        Assert.Equal(FidelityStatus.NotEvaluated, result.FidelityStatus);
+        Assert.Contains(result.Diagnostics!, d => d.Code == "MULTIMODAL_FORMAT_UNSUPPORTED");
+    }
+
+    [Fact]
+    public async Task Engine_MultimodalOfficeResultRemainsEvaluated()
+    {
+        var engine = new MarkItDownEngine(builder => builder.Add(new StubConverter(
+            ".pptx", convert: (_, _) => Task.FromResult(new DocumentConversionResult(
+                "Pptx", "slide", Fidelity: FidelityStatus.Complete)))));
 
         var result = await engine.ConvertAsync(new DocumentConversionRequest
         {
@@ -144,8 +161,8 @@ public sealed class MultimodalContractsTests
             Options = new ConversionOptions { PipelineMode = PipelineMode.Multimodal }
         });
 
-        Assert.Equal(FidelityStatus.NotEvaluated, result.FidelityStatus);
-        Assert.Contains(result.Diagnostics!, d => d.Code == "MULTIMODAL_FORMAT_UNSUPPORTED");
+        Assert.Equal(FidelityStatus.Complete, result.FidelityStatus);
+        Assert.DoesNotContain(result.Diagnostics ?? [], d => d.Code == "MULTIMODAL_FORMAT_UNSUPPORTED");
     }
 
     [Fact]
@@ -256,6 +273,29 @@ public sealed class MultimodalContractsTests
         {
             File.Delete(path);
         }
+    }
+
+    [Fact]
+    public void DoclingDocumentAdapter_PreservesBodyOrderHeadingKindAndSourceLocation()
+    {
+        const string json = """
+            {
+              "body": { "children": [{ "$ref": "#/texts/1" }, { "$ref": "#/texts/0" }] },
+              "texts": [
+                { "self_ref": "#/texts/0", "label": "text", "text": "body", "prov": [{ "page_no": 2, "bbox": { "l": 1, "t": 2, "r": 3, "b": 4 } }] },
+                { "self_ref": "#/texts/1", "label": "section_header", "text": "Title", "level": 2, "prov": [{ "page_no": 1 }] }
+              ],
+              "pages": { "1": { "size": { "width": 600, "height": 800 } } }
+            }
+            """;
+
+        var model = DoclingDocumentAdapter.Adapt(json, "Pptx");
+
+        Assert.Equal(["heading", "paragraph"], model.Blocks.Select(block => block.Kind));
+        Assert.Equal("Title", model.Blocks[0].Text);
+        Assert.Equal("2", model.Blocks[0].Attributes!["level"]);
+        Assert.Equal(1, model.Blocks[0].Source!.Page);
+        Assert.Equal(2, model.Blocks[1].Source!.Page);
     }
 
     private sealed class FakeDoclingTransport : IDoclingTransport

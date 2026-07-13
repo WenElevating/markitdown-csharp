@@ -67,12 +67,18 @@ Enable LLM captioning for images and audio:
 ```bash
 dotnet run --project src/MarkItDown.Cli -- photo.jpg --llm-key sk-... --llm-model gpt-4o
 
-# Multimodal preview pipeline
+# Multimodal PDF/DOCX/PPTX/XLSX pipeline
 dotnet run --project src/MarkItDown.Cli -- document.pdf --pipeline multimodal --vision auto --diagnostics report.json
 
 # Optional Docling worker (Python 3.10+)
 python -m pip install -r tools/requirements-docling.txt
 ```
+
+The multimodal pipeline keeps native PDF, DOCX, PPTX, and XLSX structure as
+the primary result. Docling is an optional persistent enhancement worker;
+provider failures retain the native output and expose a partial diagnostic.
+The executable Golden Corpus and quality thresholds live in
+`tests/GoldenCorpus/manifest.json`.
 
 List all supported formats:
 

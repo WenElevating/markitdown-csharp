@@ -21,11 +21,14 @@ public sealed class DocxConverter : BaseConverter
     public override async Task<DocumentConversionResult> ConvertAsync(
         DocumentConversionRequest request, CancellationToken cancellationToken = default)
     {
-        return await Task.Run(() =>
+        return await Task.Run(async () =>
         {
             try
             {
                 using var input = DocumentInputMaterializer.Materialize(request, cancellationToken);
+                OfficePackageGuard.Validate(input.FilePath,
+                    request.Context?.Options.Limits ?? new ConversionLimits(),
+                    request.Context?.Options.Privacy.AllowExternalRelationships == true);
                 using var doc = WordprocessingDocument.Open(input.FilePath, false);
                 var body = doc.MainDocumentPart?.Document?.Body;
                 if (body is null)
@@ -33,7 +36,8 @@ public sealed class DocxConverter : BaseConverter
                     var emptyFidelity = request.Context?.Pipeline == PipelineMode.Multimodal
                         ? FidelityStatus.Complete : FidelityStatus.NotEvaluated;
                     var model = new DocumentModel("Docx", [], Fidelity: emptyFidelity);
-                    return new DocumentConversionResult("Docx", string.Empty, Document: model, Fidelity: emptyFidelity);
+                    return await OfficeDoclingEnhancer.EnhanceAsync(
+                        "Docx", request, input.FilePath, model, cancellationToken);
                 }
 
                 var blocks = new List<string>();
@@ -63,8 +67,8 @@ public sealed class DocxConverter : BaseConverter
                     ? FidelityStatus.Complete
                     : FidelityStatus.NotEvaluated;
                 var document = DocumentModelBuilder.FromMarkdown("Docx", markdown, fidelity);
-                markdown = MarkdownRenderer.Render(document);
-                return new DocumentConversionResult("Docx", markdown, Document: document, Fidelity: fidelity);
+                return await OfficeDoclingEnhancer.EnhanceAsync(
+                    "Docx", request, input.FilePath, document, cancellationToken);
             }
             catch (OperationCanceledException) { throw; }
             catch (ConversionException) { throw; }

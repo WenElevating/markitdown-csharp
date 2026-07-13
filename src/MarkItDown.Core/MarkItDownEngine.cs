@@ -209,7 +209,7 @@ public sealed class MarkItDownEngine
 
     private static DocumentConversionResult ApplyPipelineStatus(DocumentConversionResult result, ConversionContext context)
     {
-        if (context.Pipeline != PipelineMode.Multimodal || result.Kind is "Pdf" or "Docx") return result;
+        if (context.Pipeline != PipelineMode.Multimodal || result.Kind is "Pdf" or "Docx" or "Pptx" or "Xlsx") return result;
         var diagnostics = (result.Diagnostics ?? Array.Empty<ConversionDiagnostic>()).ToList();
         if (diagnostics.All(d => d.Code != "MULTIMODAL_FORMAT_UNSUPPORTED"))
         {

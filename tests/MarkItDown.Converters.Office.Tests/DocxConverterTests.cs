@@ -55,6 +55,34 @@ public sealed class DocxConverterTests
         }
     }
 
+    [Fact]
+    public async Task ConvertAsync_MultimodalAddsDoclingVisualSupplement()
+    {
+        var docxPath = CreateTestDocx();
+        try
+        {
+            var result = await _converter.ConvertAsync(new DocumentConversionRequest
+            {
+                FilePath = docxPath,
+                Context = new ConversionContext
+                {
+                    Pipeline = PipelineMode.Multimodal,
+                    Vision = VisionMode.Auto,
+                    Options = new ConversionOptions { PipelineMode = PipelineMode.Multimodal, VisionMode = VisionMode.Auto, DoclingTransport = new FakeDoclingTransport() }
+                }
+            });
+
+            Assert.Equal(FidelityStatus.Complete, result.FidelityStatus);
+            Assert.Contains("## Introduction", result.Markdown);
+            Assert.Contains("Visual diagram insight", result.Markdown);
+            Assert.NotEmpty(result.Document?.Supplements ?? []);
+        }
+        finally
+        {
+            File.Delete(docxPath);
+        }
+    }
+
     private static string CreateTestDocx()
     {
         var path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.docx");
@@ -102,6 +130,13 @@ public sealed class DocxConverterTests
 
         mainPart.Document.Save();
         return path;
+    }
+
+    private sealed class FakeDoclingTransport : IDoclingTransport
+    {
+        public Task<DoclingResponse> SendAsync(DoclingRequest request, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new DoclingResponse(request.RequestId, "1", true,
+                "{\"texts\":[{\"text\":\"Visual diagram insight\"}]}", null, null));
     }
 
     private static Paragraph CreateParagraph(string text, string styleId)

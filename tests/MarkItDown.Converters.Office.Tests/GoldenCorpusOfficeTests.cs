@@ -1,0 +1,66 @@
+using System.Text.Json;
+using MarkItDown.Core;
+
+namespace MarkItDown.Converters.Office.Tests;
+
+public sealed class GoldenCorpusOfficeTests
+{
+    [Theory]
+    [InlineData("docx")]
+    [InlineData("pptx")]
+    [InlineData("xlsx")]
+    public async Task GeneratedOfficeCorpus_PassesStructuralQualityGate(string format)
+    {
+        var path = GoldenOfficeFixtureFactory.Create(format);
+        try
+        {
+            var converter = format switch
+            {
+                "docx" => (IConverter)new DocxConverter(),
+                "pptx" => new PptxConverter(),
+                "xlsx" => new XlsxConverter(),
+                _ => throw new ArgumentOutOfRangeException(nameof(format))
+            };
+            var result = await converter.ConvertAsync(new DocumentConversionRequest
+            {
+                FilePath = path,
+                Context = new ConversionContext
+                {
+                    Pipeline = PipelineMode.Multimodal,
+                    Vision = VisionMode.Off,
+                    Options = new ConversionOptions { PipelineMode = PipelineMode.Multimodal, VisionMode = VisionMode.Off }
+                }
+            });
+
+            var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+            using var manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "tests", "GoldenCorpus", "manifest.json")));
+            var entry = manifest.RootElement.GetProperty("entries").EnumerateArray()
+                .Single(item => item.GetProperty("format").GetString() == format);
+            var expectedJson = entry.GetProperty("expected");
+            var expected = new GoldenDocumentExpectation
+            {
+                RequiredText = ReadArray(expectedJson, "requiredText"),
+                RequiredHeadings = ReadArray(expectedJson, "requiredHeadings"),
+                RequiredTableCells = ReadArray(expectedJson, "requiredTableCells"),
+                MinimumAssets = expectedJson.TryGetProperty("minimumAssets", out var minimumAssets) ? minimumAssets.GetInt32() : 0
+            };
+            var report = DocumentQualityEvaluator.Evaluate(result.Document!, expected, result.Assets.Count);
+            var thresholds = manifest.RootElement.GetProperty("qualityThresholds");
+
+            Assert.Equal(FidelityStatus.Complete, result.FidelityStatus);
+            Assert.True(report.Passed, JsonSerializer.Serialize(report));
+            Assert.True(report.TextRecall >= thresholds.GetProperty("minTextRecall").GetDouble());
+            Assert.True(report.HeadingAccuracy >= thresholds.GetProperty("minHeadingAccuracy").GetDouble());
+            Assert.True(report.TableCellRecall >= thresholds.GetProperty("minTableCellRecall").GetDouble());
+            Assert.True(report.UnexplainedContentLossCount <= thresholds.GetProperty("maxUnexplainedContentLoss").GetInt32());
+            Assert.Equal(0, report.UnexplainedContentLossCount);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    private static IReadOnlyList<string> ReadArray(JsonElement objectElement, string property) =>
+        objectElement.GetProperty(property).EnumerateArray().Select(item => item.GetString()!).ToArray();
+}

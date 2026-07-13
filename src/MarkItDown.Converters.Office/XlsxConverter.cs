@@ -19,11 +19,14 @@ public sealed class XlsxConverter : BaseConverter
     public override async Task<DocumentConversionResult> ConvertAsync(
         DocumentConversionRequest request, CancellationToken cancellationToken = default)
     {
-        return await Task.Run(() =>
+        return await Task.Run(async () =>
         {
             try
             {
                 using var input = DocumentInputMaterializer.Materialize(request, cancellationToken);
+                OfficePackageGuard.Validate(input.FilePath,
+                    request.Context?.Options.Limits ?? new ConversionLimits(),
+                    request.Context?.Options.Privacy.AllowExternalRelationships == true);
                 using var doc = SpreadsheetDocument.Open(input.FilePath, false);
                 var workbookPart = doc.WorkbookPart
                     ?? throw new ConversionException("Invalid XLSX file.");
@@ -35,9 +38,9 @@ public sealed class XlsxConverter : BaseConverter
                     ? sheets.Elements<Sheet>().ToList()
                     : new List<Sheet>();
 
-                var sections = new List<string>();
+                var nativeBlocks = new List<DocumentBlock>();
 
-                foreach (var worksheetPart in workbookPart.WorksheetParts)
+                foreach (var (worksheetPart, sheetIndex) in workbookPart.WorksheetParts.Select((part, index) => (part, index)))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
@@ -50,23 +53,26 @@ public sealed class XlsxConverter : BaseConverter
                     var rows = sheetData.Elements<Row>().ToList();
                     if (rows.Count == 0) continue;
 
+                    var source = new SourceLocation(Sheet: sheetName, Index: sheetIndex);
+                    nativeBlocks.Add(new DocumentBlock(
+                        "heading", sheetName, source,
+                        new Dictionary<string, string> { ["level"] = "2" }));
                     var builder = new StringBuilder();
-                    builder.AppendLine($"## {sheetName}");
 
                     var hiddenRows = rows.Where(row => row.Hidden?.Value == true).Select(row => row.RowIndex?.Value).Where(index => index is not null).ToArray();
                     if (hiddenRows.Length > 0)
-                        builder.AppendLine($"<!-- Hidden rows: {string.Join(", ", hiddenRows)} -->");
+                        nativeBlocks.Add(new DocumentBlock("paragraph", $"<!-- Hidden rows: {string.Join(", ", hiddenRows)} -->", source));
                     var hiddenColumns = (worksheetPart.Worksheet?.Elements<Columns>() ?? [])
                         .SelectMany(columns => columns.Elements<Column>())
                         .Where(column => column.Hidden?.Value == true)
                         .Select(column => $"{column.Min?.Value}-{column.Max?.Value}").ToArray();
                     if (hiddenColumns.Length > 0)
-                        builder.AppendLine($"<!-- Hidden columns: {string.Join(", ", hiddenColumns)} -->");
+                        nativeBlocks.Add(new DocumentBlock("paragraph", $"<!-- Hidden columns: {string.Join(", ", hiddenColumns)} -->", source));
                     var mergedRanges = (worksheetPart.Worksheet?.Elements<MergeCells>() ?? [])
                         .SelectMany(merges => merges.Elements<MergeCell>())
                         .Select(cell => cell.Reference?.Value).Where(reference => !string.IsNullOrWhiteSpace(reference)).ToArray();
                     if (mergedRanges.Length > 0)
-                        builder.AppendLine($"<!-- Merged cells: {string.Join(", ", mergedRanges)} -->");
+                        nativeBlocks.Add(new DocumentBlock("paragraph", $"<!-- Merged cells: {string.Join(", ", mergedRanges)} -->", source));
 
                     // First row = header
                     var headerCells = rows[0].Elements<Cell>().ToList();
@@ -95,17 +101,18 @@ public sealed class XlsxConverter : BaseConverter
                         builder.AppendLine($"| {string.Join(" | ", fields)} |");
                     }
 
-                    sections.Add(builder.ToString().TrimEnd());
+                    nativeBlocks.Add(new DocumentBlock("table", builder.ToString().TrimEnd(), source));
                 }
 
-                var markdown = string.Join(Environment.NewLine + Environment.NewLine, sections);
                 var images = OfficeAssetExtractor.Extract(
                     workbookPart.WorksheetParts.SelectMany(sheet => sheet.ImageParts), request);
                 if (!string.IsNullOrWhiteSpace(images))
-                    markdown = string.IsNullOrWhiteSpace(markdown) ? images : markdown + Environment.NewLine + Environment.NewLine + images;
-                var document = DocumentModelBuilder.FromMarkdown("Xlsx", markdown, FidelityStatus.NotEvaluated);
-                markdown = MarkdownRenderer.Render(document);
-                return new DocumentConversionResult("Xlsx", markdown, Document: document);
+                    nativeBlocks.Add(new DocumentBlock("figure", images));
+                var fidelity = request.Context?.Pipeline == PipelineMode.Multimodal
+                    ? FidelityStatus.Complete : FidelityStatus.NotEvaluated;
+                var document = new DocumentModel("Xlsx", nativeBlocks, Fidelity: fidelity);
+                return await OfficeDoclingEnhancer.EnhanceAsync(
+                    "Xlsx", request, input.FilePath, document, cancellationToken);
             }
             catch (OperationCanceledException) { throw; }
             catch (ConversionException) { throw; }

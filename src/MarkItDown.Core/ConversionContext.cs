@@ -13,6 +13,8 @@ public sealed record ConversionLimits
     public long MaxAssetBytes { get; init; } = 32L * 1024 * 1024;
     public long MaxTotalAssetBytes { get; init; } = 512L * 1024 * 1024;
     public int MaxVisionTasks { get; init; } = 100;
+    public int MaxPackageEntries { get; init; } = 10_000;
+    public long MaxPackageUncompressedBytes { get; init; } = 1L * 1024 * 1024 * 1024;
     public TimeSpan OverallTimeout { get; init; } = TimeSpan.FromMinutes(15);
 }
 

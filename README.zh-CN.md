@@ -67,12 +67,17 @@ dotnet run --project src/MarkItDown.Cli -- https://example.com
 ```bash
 dotnet run --project src/MarkItDown.Cli -- photo.jpg --llm-key sk-... --llm-model gpt-4o
 
-# 多模态预览管线
+# PDF/DOCX/PPTX/XLSX 多模态管线
 dotnet run --project src/MarkItDown.Cli -- document.pdf --pipeline multimodal --vision auto --diagnostics report.json
 
 # 可选 Docling worker（Python 3.10+）
 python -m pip install -r tools/requirements-docling.txt
 ```
+
+多模态管线以 PDF、DOCX、PPTX、XLSX 的本地确定性结构为主结果；Docling
+作为可选的持久化增强 worker。增强失败时保留原生结果，并通过结构化诊断
+返回 `Partial`。可执行 Golden Corpus 和质量阈值位于
+`tests/GoldenCorpus/manifest.json`。
 
 列出所有支持的格式：
 

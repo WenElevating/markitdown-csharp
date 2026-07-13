@@ -31,6 +31,7 @@ public sealed class PptxConverterTests
             Assert.Contains("Hello World", result.Markdown);
             Assert.Contains("First point", result.Markdown);
             Assert.Equal("Pptx", result.Kind);
+            Assert.Equal(1, result.Document!.Blocks.First(block => block.Kind == "heading").Source!.Slide);
         }
         finally
         {
@@ -47,6 +48,62 @@ public sealed class PptxConverterTests
             var result = await _converter.ConvertAsync(
                 new DocumentConversionRequest { FilePath = pptxPath });
             Assert.NotNull(result.Markdown);
+        }
+        finally
+        {
+            File.Delete(pptxPath);
+        }
+    }
+
+    [Fact]
+    public async Task ConvertAsync_MultimodalAddsDoclingSupplementWithoutReplacingNativeContent()
+    {
+        var pptxPath = CreateTestPptx();
+        try
+        {
+            var result = await _converter.ConvertAsync(new DocumentConversionRequest
+            {
+                FilePath = pptxPath,
+                Context = new ConversionContext
+                {
+                    Pipeline = PipelineMode.Multimodal,
+                    Vision = VisionMode.Auto,
+                    Options = new ConversionOptions { PipelineMode = PipelineMode.Multimodal, VisionMode = VisionMode.Auto, DoclingTransport = new FakeDoclingTransport() }
+                }
+            });
+
+            Assert.Equal(FidelityStatus.Complete, result.FidelityStatus);
+            Assert.Contains("## Welcome", result.Markdown);
+            Assert.Contains("Visual chart insight", result.Markdown);
+            Assert.DoesNotContain(result.Diagnostics ?? [], d => d.Code == "MULTIMODAL_FORMAT_UNSUPPORTED");
+            Assert.NotEmpty(result.Document?.Supplements ?? []);
+        }
+        finally
+        {
+            File.Delete(pptxPath);
+        }
+    }
+
+    [Fact]
+    public async Task ConvertAsync_MultimodalDoclingFailureFallsBackToNativeOutput()
+    {
+        var pptxPath = CreateTestPptx();
+        try
+        {
+            var result = await _converter.ConvertAsync(new DocumentConversionRequest
+            {
+                FilePath = pptxPath,
+                Context = new ConversionContext
+                {
+                    Pipeline = PipelineMode.Multimodal,
+                    Vision = VisionMode.Auto,
+                    Options = new ConversionOptions { PipelineMode = PipelineMode.Multimodal, VisionMode = VisionMode.Auto, DoclingTransport = new FailingDoclingTransport() }
+                }
+            });
+
+            Assert.Equal(FidelityStatus.Partial, result.FidelityStatus);
+            Assert.Contains("## Welcome", result.Markdown);
+            Assert.Contains(result.Diagnostics!, d => d.Code == "DOCLING_FAILED_FALLBACK_NATIVE");
         }
         finally
         {
@@ -81,6 +138,19 @@ public sealed class PptxConverterTests
         presentationPart.Presentation.Save();
 
         return path;
+    }
+
+    private sealed class FakeDoclingTransport : IDoclingTransport
+    {
+        public Task<DoclingResponse> SendAsync(DoclingRequest request, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new DoclingResponse(request.RequestId, "1", true,
+                "{\"texts\":[{\"text\":\"Hello World\"},{\"text\":\"Visual chart insight\"}]}", null, null));
+    }
+
+    private sealed class FailingDoclingTransport : IDoclingTransport
+    {
+        public Task<DoclingResponse> SendAsync(DoclingRequest request, CancellationToken cancellationToken = default) =>
+            throw new IOException("provider unavailable");
     }
 
     private static Shape CreateShape(uint id, string name, string text, bool isTitle)

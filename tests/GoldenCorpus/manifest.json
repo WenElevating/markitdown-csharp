@@ -1,9 +1,53 @@
 {
   "schemaVersion": "1",
+  "qualityThresholds": {
+    "minTextRecall": 1.0,
+    "minHeadingAccuracy": 1.0,
+    "minTableCellRecall": 1.0,
+    "maxUnexplainedContentLoss": 0
+  },
   "entries": [
-    { "format": "pdf", "path": "../Fixtures/sample.pdf", "features": ["native-text", "headings", "images"] },
-    { "format": "pdf", "path": "../Fixtures/table.pdf", "features": ["table", "reading-order"] },
-    { "format": "pdf", "path": "../Fixtures/scanned.pdf", "features": ["scanned", "partial-fallback"] },
-    { "format": "office", "path": "../Fixtures/office/sample.csv", "features": ["compatibility-baseline"] }
+    {
+      "format": "pdf",
+      "path": "../Fixtures/sample.pdf",
+      "features": ["native-text", "headings", "images"],
+      "expected": { "requiredText": ["1 Introduction"], "requiredHeadings": ["1 Introduction"], "requiredTableCells": [] }
+    },
+    {
+      "format": "pdf",
+      "path": "../Fixtures/table.pdf",
+      "features": ["table", "reading-order"],
+      "expected": { "requiredText": ["Table"], "requiredHeadings": [], "requiredTableCells": [] }
+    },
+    {
+      "format": "pdf",
+      "path": "../Fixtures/scanned.pdf",
+      "features": ["scanned", "partial-fallback"],
+      "expected": { "requiredText": [], "requiredHeadings": [], "requiredTableCells": [], "minimumAssets": 3 }
+    },
+    {
+      "format": "office",
+      "path": "../Fixtures/office/sample.csv",
+      "features": ["compatibility-baseline"],
+      "expected": { "requiredText": ["Name", "Alice"], "requiredHeadings": [], "requiredTableCells": [] }
+    },
+    {
+      "format": "docx",
+      "factory": "generated-office-smoke",
+      "features": ["headings", "paragraphs", "tables", "multimodal-native"],
+      "expected": { "requiredText": ["Golden DOCX body"], "requiredHeadings": ["Golden DOCX"], "requiredTableCells": [] }
+    },
+    {
+      "format": "pptx",
+      "factory": "generated-office-smoke",
+      "features": ["slide-order", "slide-boundary", "multimodal-native"],
+      "expected": { "requiredText": ["Golden PPTX body"], "requiredHeadings": ["Golden PPTX"], "requiredTableCells": [] }
+    },
+    {
+      "format": "xlsx",
+      "factory": "generated-office-smoke",
+      "features": ["sheet-order", "formula-values", "multimodal-native"],
+      "expected": { "requiredText": ["Golden XLSX", "Alice", "Engineering"], "requiredHeadings": ["Golden XLSX"], "requiredTableCells": ["Alice", "Engineering"] }
+    }
   ]
 }

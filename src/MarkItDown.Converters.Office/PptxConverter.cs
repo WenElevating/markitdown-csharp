@@ -20,26 +20,35 @@ public sealed class PptxConverter : BaseConverter
     public override async Task<DocumentConversionResult> ConvertAsync(
         DocumentConversionRequest request, CancellationToken cancellationToken = default)
     {
-        return await Task.Run(() =>
+        return await Task.Run(async () =>
         {
             try
             {
                 using var input = DocumentInputMaterializer.Materialize(request, cancellationToken);
+                OfficePackageGuard.Validate(input.FilePath,
+                    request.Context?.Options.Limits ?? new ConversionLimits(),
+                    request.Context?.Options.Privacy.AllowExternalRelationships == true);
                 using var doc = PresentationDocument.Open(input.FilePath, false);
                 var presentationPart = doc.PresentationPart
                     ?? throw new ConversionException("Invalid PPTX file.");
 
                 var slideParts = presentationPart.SlideParts.ToList();
                 if (slideParts.Count == 0)
-                    return new DocumentConversionResult("Pptx", string.Empty);
-
-                var sections = new List<string>();
-
-                foreach (var slidePart in slideParts)
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
+                    var emptyFidelity = request.Context?.Pipeline == PipelineMode.Multimodal
+                        ? FidelityStatus.Complete : FidelityStatus.NotEvaluated;
+                    var emptyDocument = new DocumentModel("Pptx", [], Fidelity: emptyFidelity);
+                    return await OfficeDoclingEnhancer.EnhanceAsync(
+                        "Pptx", request, input.FilePath, emptyDocument, cancellationToken);
+                }
 
-                    var blocks = new List<string>();
+                var nativeBlocks = new List<DocumentBlock>();
+
+                for (var slideIndex = 0; slideIndex < slideParts.Count; slideIndex++)
+                {
+                    var slidePart = slideParts[slideIndex];
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var source = new SourceLocation(Slide: slideIndex + 1);
 
                     foreach (var shape in slidePart.Slide?.Descendants<Shape>() ?? [])
                     {
@@ -53,7 +62,9 @@ public sealed class PptxConverter : BaseConverter
                         if (placeholderType == PlaceholderValues.Title ||
                             placeholderType == PlaceholderValues.CenteredTitle)
                         {
-                            blocks.Add($"## {text.Trim()}");
+                            nativeBlocks.Add(new DocumentBlock(
+                                "heading", text.Trim(), source,
+                                new Dictionary<string, string> { ["level"] = "2" }));
                         }
                         else
                         {
@@ -63,7 +74,7 @@ public sealed class PptxConverter : BaseConverter
                             {
                                 var trimmed = line.Trim();
                                 if (!string.IsNullOrWhiteSpace(trimmed))
-                                    blocks.Add($"- {trimmed}");
+                                    nativeBlocks.Add(new DocumentBlock("list", $"- {trimmed}", source));
                             }
                         }
                     }
@@ -76,25 +87,22 @@ public sealed class PptxConverter : BaseConverter
 
                     if (notesText is not null && notesText.Any())
                     {
-                        blocks.Add($"> {string.Join(" ", notesText)}");
+                        nativeBlocks.Add(new DocumentBlock("note", $"> {string.Join(" ", notesText)}", source));
                     }
 
-                    if (blocks.Count > 0)
-                        sections.Add(string.Join(Environment.NewLine + Environment.NewLine, blocks));
+                    if (slideIndex < slideParts.Count - 1 && nativeBlocks.Count > 0)
+                        nativeBlocks.Add(new DocumentBlock("pagebreak", "---", source));
                 }
 
-                var markdown = string.Join(
-                    Environment.NewLine + Environment.NewLine + "---" + Environment.NewLine + Environment.NewLine,
-                    sections);
                 var images = OfficeAssetExtractor.Extract(
                     slideParts.SelectMany(slide => slide.ImageParts), request);
                 if (!string.IsNullOrWhiteSpace(images))
-                    markdown = string.IsNullOrWhiteSpace(markdown) ? images : markdown + Environment.NewLine + Environment.NewLine + images;
+                    nativeBlocks.Add(new DocumentBlock("figure", images));
                 var fidelity = request.Context?.Pipeline == PipelineMode.Multimodal
-                    ? FidelityStatus.NotEvaluated : FidelityStatus.NotEvaluated;
-                var document = DocumentModelBuilder.FromMarkdown("Pptx", markdown, fidelity);
-                markdown = MarkdownRenderer.Render(document);
-                return new DocumentConversionResult("Pptx", markdown, Document: document, Fidelity: fidelity);
+                    ? FidelityStatus.Complete : FidelityStatus.NotEvaluated;
+                var document = new DocumentModel("Pptx", nativeBlocks, Fidelity: fidelity);
+                return await OfficeDoclingEnhancer.EnhanceAsync(
+                    "Pptx", request, input.FilePath, document, cancellationToken);
             }
             catch (OperationCanceledException) { throw; }
             catch (ConversionException) { throw; }
