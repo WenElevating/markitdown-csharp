@@ -6,6 +6,80 @@
     "minTableCellRecall": 1.0,
     "maxUnexplainedContentLoss": 0
   },
+  "realCorpus": {
+    "sourceRepository": "https://github.com/microsoft/markitdown",
+    "sourceCommit": "63cbbd9de6afa01ee3b97127e4945c5706a29472",
+    "licenseNotice": "THIRD_PARTY_LICENSES.md",
+    "root": "../Fixtures/real",
+    "sets": [
+      {
+        "name": "markitdown",
+        "path": "../Fixtures/real/markitdown",
+        "counts": { "pdf": 7, "docx": 4, "pptx": 1, "xlsx": 1 },
+        "features": ["native-text", "tables", "equations", "comments", "scanned", "multipage"]
+      },
+      {
+        "name": "markitdown-ocr",
+        "path": "../Fixtures/real/markitdown-ocr",
+        "counts": { "pdf": 11, "docx": 6, "pptx": 5, "xlsx": 5 },
+        "features": ["complex-layout", "images-at-start-middle-end", "scanned", "multipage"]
+      }
+    ],
+    "packageChecks": [
+      {
+        "path": "../Fixtures/real/markitdown/test.pptx",
+        "requiredEntries": ["ppt/charts/chart1.xml"],
+        "features": ["real-chart"]
+      },
+      {
+        "path": "../Fixtures/real/markitdown/test_with_comment.docx",
+        "requiredEntries": ["word/comments.xml"],
+        "features": ["real-comments"]
+      },
+      {
+        "path": "../Fixtures/real/markitdown-ocr/docx_multiple_images.docx",
+        "requiredEntries": ["word/media/image1.png", "word/media/image2.png"],
+        "features": ["real-multiple-assets"]
+      }
+    ],
+    "labeledCases": [
+      {
+        "format": "pdf",
+        "path": "../Fixtures/real/markitdown/movie-theater-booking-2024.pdf",
+        "label": "labels/movie-theater-booking-2024.md",
+        "requiredText": ["BOOKING ORDER", "STARLIGHT CINEMAS", "2024-12-5678", "Sarah Johnson"],
+        "orderedText": ["BOOKING ORDER", "STARLIGHT CINEMAS", "Orders"]
+      },
+      {
+        "format": "pdf",
+        "path": "../Fixtures/real/markitdown/RECEIPT-2024-TXN-98765_retail_purchase.pdf",
+        "label": "labels/RECEIPT-2024-TXN-98765_retail_purchase.md",
+        "requiredText": ["TECHMART ELECTRONICS", "TXN-98765-2024", "Emily Rodriguez"],
+        "orderedText": ["TECHMART ELECTRONICS", "SUBTOTAL", "TOTAL"]
+      },
+      {
+        "format": "pdf",
+        "path": "../Fixtures/real/markitdown/REPAIR-2022-INV-001_multipage.pdf",
+        "label": "labels/REPAIR-2022-INV-001_multipage.md",
+        "requiredText": ["ZAVA AUTO REPAIR", "EST-1008", "Gabriel Diaz", "Grand Cherokee"],
+        "orderedText": ["ZAVA AUTO REPAIR", "EST-1008", "Gabriel Diaz"]
+      },
+      {
+        "format": "pdf",
+        "path": "../Fixtures/real/markitdown/SPARSE-2024-INV-1234_borderless_table.pdf",
+        "label": "labels/SPARSE-2024-INV-1234_borderless_table.md",
+        "requiredText": ["INVENTORY RECONCILIATION REPORT", "SPARSE-2024-INV-1234", "SKU-8847", "CRITICAL"],
+        "orderedText": ["INVENTORY RECONCILIATION REPORT", "SPARSE-2024-INV-1234", "SKU-8847"]
+      },
+      {
+        "format": "pdf",
+        "path": "../Fixtures/real/markitdown/test.pdf",
+        "label": "labels/test.md",
+        "requiredText": ["Introduction", "Large language models", "Our insight"],
+        "orderedText": ["Introduction", "Large language models"]
+      }
+    ]
+  },
   "entries": [
     {
       "format": "pdf",

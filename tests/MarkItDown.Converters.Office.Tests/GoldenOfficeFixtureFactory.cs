@@ -6,6 +6,7 @@ using DocumentFormat.OpenXml.Spreadsheet;
 using DocumentFormat.OpenXml.Wordprocessing;
 using A = DocumentFormat.OpenXml.Drawing;
 using W = DocumentFormat.OpenXml.Wordprocessing;
+using System.IO.Compression;
 
 namespace MarkItDown.Converters.Office.Tests;
 
@@ -13,10 +14,12 @@ internal static class GoldenOfficeFixtureFactory
 {
     public static string Create(string format)
     {
-        var path = Path.Combine(Path.GetTempPath(), $"golden-{format}-{Guid.NewGuid():N}.{format}");
+        var extension = format == "docx-floating" ? "docx" : format;
+        var path = Path.Combine(Path.GetTempPath(), $"golden-{format}-{Guid.NewGuid():N}.{extension}");
         switch (format)
         {
-            case "docx": CreateDocx(path); break;
+            case "docx": CreateDocx(path, floatingImage: false); break;
+            case "docx-floating": CreateDocx(path, floatingImage: true); break;
             case "pptx": CreatePptx(path); break;
             case "xlsx": CreateXlsx(path); break;
             default: throw new ArgumentOutOfRangeException(nameof(format));
@@ -24,8 +27,9 @@ internal static class GoldenOfficeFixtureFactory
         return path;
     }
 
-    private static void CreateDocx(string path)
+    private static void CreateDocx(string path, bool floatingImage)
     {
+        string imageRelationshipId;
         using var document = WordprocessingDocument.Create(path, WordprocessingDocumentType.Document);
         var main = document.AddMainDocumentPart();
         main.Document = new Document(new Body(
@@ -33,9 +37,32 @@ internal static class GoldenOfficeFixtureFactory
             new Paragraph(new W.Run(new W.Text("Golden DOCX body")))));
         var image = main.AddImagePart(ImagePartType.Png);
         image.FeedData(new MemoryStream(PngBytes()));
+        imageRelationshipId = main.GetIdOfPart(image);
         var chart = main.AddNewPart<ChartPart>();
         chart.FeedData(new MemoryStream(Encoding.UTF8.GetBytes(ChartXml())));
         main.Document.Save();
+        document.Dispose();
+        if (floatingImage)
+            InjectFloatingImage(path, imageRelationshipId);
+    }
+
+    private static void InjectFloatingImage(string path, string relationshipId)
+    {
+        using var archive = ZipFile.Open(path, ZipArchiveMode.Update);
+        var entry = archive.GetEntry("word/document.xml") ?? throw new InvalidOperationException("Generated DOCX is missing word/document.xml.");
+        string xml;
+        using (var reader = new StreamReader(entry.Open()))
+            xml = reader.ReadToEnd();
+
+        var drawing = $"""
+            <w:p><w:r><w:drawing xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="0" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1"><wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="column"><wp:posOffset>0</wp:posOffset></wp:positionH><wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV><wp:extent cx="914400" cy="914400"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapNone/><wp:docPr id="42" name="Floating image"/><wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="0" name="image.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="{relationshipId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r></w:p>
+            """;
+        xml = xml.Replace("<w:body>", $"<w:body>{drawing}", StringComparison.Ordinal);
+
+        entry.Delete();
+        var replacement = archive.CreateEntry("word/document.xml");
+        using var writer = new StreamWriter(replacement.Open());
+        writer.Write(xml);
     }
 
     private static void CreatePptx(string path)

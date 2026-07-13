@@ -88,6 +88,7 @@ public static class DocumentQualityEvaluator
             ? 1
             : Recall(expected.ExpectedSourceCount.Value, Math.Max(0, expected.ExpectedSourceCount.Value - actual.Blocks.Count(block => block.Source is not null)));
         var unexplainedLosses = missingText.Count;
+        var tableIsLabeled = expectedTableCells.Count > 0;
         var passed = actual.Fidelity != FidelityStatus.Failed
             && missingText.Count == 0
             && missingHeadings.Count == 0
@@ -96,7 +97,7 @@ public static class DocumentQualityEvaluator
             && missingAssets == 0
             && textErrorRate == 0
             && readingOrderAccuracy == 1
-            && tableF1 == 1
+            && (!tableIsLabeled || tableF1 == 1)
             && sourceCoverage == 1;
 
         return new DocumentQualityReport(
