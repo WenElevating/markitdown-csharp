@@ -30,6 +30,9 @@ public sealed class DocxConverterTests
             Assert.Contains("**bold**", result.Markdown);
             Assert.Contains("*italic*", result.Markdown);
             Assert.Contains("- Item 1", result.Markdown);
+            Assert.Contains("Inserted content", result.Markdown);
+            Assert.Contains("Content control content", result.Markdown);
+            Assert.DoesNotContain("Deleted content", result.Markdown);
             Assert.Contains("| Header A | Header B |", result.Markdown);
             Assert.Equal("Docx", result.Kind);
             Assert.Equal("word/document.xml", result.Document!.Blocks.First(block => block.Kind == "heading").Source!.Part);
@@ -118,6 +121,10 @@ public sealed class DocxConverterTests
         // Bullet list
         body.AppendChild(CreateListParagraph("Item 1"));
         body.AppendChild(CreateListParagraph("Item 2"));
+        body.AppendChild(new Paragraph(new InsertedRun(new Run(new Text("Inserted content")))));
+        body.AppendChild(new Paragraph(new DeletedRun(new Run(new Text("Deleted content")))));
+        body.AppendChild(new SdtBlock(new SdtContentBlock(
+            new Paragraph(new Run(new Text("Content control content"))))));
 
         // Table
         var table = new Table(

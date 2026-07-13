@@ -42,7 +42,7 @@ public sealed class DocxConverter : BaseConverter
 
                 var blocks = new List<string>();
 
-                foreach (var element in body.Elements())
+                foreach (var element in EnumerateBodyBlocks(body))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
@@ -140,7 +140,7 @@ public sealed class DocxConverter : BaseConverter
     {
         var builder = new StringBuilder();
 
-        foreach (var run in para.Descendants<Run>())
+        foreach (var run in para.Descendants<Run>().Where(run => !run.Ancestors<DeletedRun>().Any()))
         {
             var text = run.InnerText;
             if (string.IsNullOrEmpty(text)) continue;
@@ -159,6 +159,22 @@ public sealed class DocxConverter : BaseConverter
         }
 
         return builder.ToString();
+    }
+
+    private static IEnumerable<OpenXmlElement> EnumerateBodyBlocks(OpenXmlElement parent)
+    {
+        foreach (var child in parent.ChildElements)
+        {
+            if (child is Deleted) continue;
+            if (child is Paragraph or Table)
+            {
+                yield return child;
+                continue;
+            }
+
+            foreach (var nested in EnumerateBodyBlocks(child))
+                yield return nested;
+        }
     }
 
     private static string RenderTable(Table table)
