@@ -11,6 +11,8 @@ public sealed class ConversionAssetRegistry
     private readonly int _maxConversions;
     private readonly long _maxPublishedBytes;
     private readonly object _gate = new();
+    private readonly HashSet<string> _activeConversions = new(StringComparer.Ordinal);
+    private long _reservedBytes;
     private long _publishedBytes;
 
     public ConversionAssetRegistry(
@@ -27,6 +29,45 @@ public sealed class ConversionAssetRegistry
 
     public int RegisteredConversionCount => _entries.Count;
     public long PublishedBytes => Interlocked.Read(ref _publishedBytes);
+    public long ReservedBytes => Interlocked.Read(ref _reservedBytes);
+    public int ActiveConversionCount { get { lock (_gate) return _activeConversions.Count; } }
+
+    public bool TryAcquireConversion(out IDisposable lease) =>
+        TryAcquireConversion(Guid.NewGuid().ToString("N"), out lease);
+
+    public bool TryAcquireConversion(string conversionId, out IDisposable lease)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(conversionId);
+        lock (_gate)
+        {
+            CleanupExpiredUnderLock(DateTimeOffset.UtcNow);
+            if (_entries.Count + _activeConversions.Count >= _maxConversions
+                || !_activeConversions.Add(conversionId))
+            {
+                lease = DisposableLease.Empty;
+                return false;
+            }
+            lease = new DisposableLease(() => ReleaseActive(conversionId));
+            return true;
+        }
+    }
+
+    public bool TryReserveBytes(long bytes, out IDisposable lease)
+    {
+        if (bytes < 0) throw new ArgumentOutOfRangeException(nameof(bytes));
+        lock (_gate)
+        {
+            CleanupExpiredUnderLock(DateTimeOffset.UtcNow);
+            if (bytes > _maxPublishedBytes - _publishedBytes - _reservedBytes)
+            {
+                lease = DisposableLease.Empty;
+                return false;
+            }
+            _reservedBytes += bytes;
+            lease = new DisposableLease(() => ReleaseReservedBytes(bytes));
+            return true;
+        }
+    }
 
     public void Register(string conversionId, InMemoryAssetStore store)
     {
@@ -42,12 +83,20 @@ public sealed class ConversionAssetRegistry
         lock (_gate)
         {
             CleanupExpiredUnderLock(DateTimeOffset.UtcNow);
+            var transferred = _activeConversions.Remove(conversionId);
             if (_entries.ContainsKey(conversionId)
-                || _entries.Count >= _maxConversions
+                || _entries.Count + _activeConversions.Count >= _maxConversions
                 || bytes > _maxPublishedBytes - _publishedBytes)
+            {
+                if (transferred) _activeConversions.Add(conversionId);
                 return false;
+            }
             var entry = new Entry(store, DateTimeOffset.UtcNow.Add(_lifetime), bytes);
-            if (!_entries.TryAdd(conversionId, entry)) return false;
+            if (!_entries.TryAdd(conversionId, entry))
+            {
+                if (transferred) _activeConversions.Add(conversionId);
+                return false;
+            }
             _publishedBytes += bytes;
             return true;
         }
@@ -99,5 +148,25 @@ public sealed class ConversionAssetRegistry
     {
         if (_entries.TryRemove(new KeyValuePair<string, Entry>(conversionId, entry)))
             Interlocked.Add(ref _publishedBytes, -entry.PublishedBytes);
+    }
+
+    private void ReleaseActive(string conversionId)
+    {
+        lock (_gate) _activeConversions.Remove(conversionId);
+    }
+
+    private void ReleaseReservedBytes(long bytes)
+    {
+        lock (_gate) _reservedBytes -= bytes;
+    }
+
+    private sealed class DisposableLease(Action release) : IDisposable
+    {
+        public static readonly DisposableLease Empty = new(() => { });
+        private int _released;
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _released, 1) == 0) release();
+        }
     }
 }

@@ -71,6 +71,19 @@ public static class MarkItDownTools
         try
         {
             EnsurePathIsAllowed(path);
+            if (!AssetRegistry.TryAcquireConversion(operationId, out var conversionLease))
+                return Failed("RESOURCE_LIMIT_EXCEEDED", "MCP active conversion quota exceeded.", operationId);
+            using (conversionLease)
+            {
+            IDisposable? inputLease = null;
+            if (File.Exists(path))
+            {
+                var inputBytes = new FileInfo(path).Length;
+                if (!AssetRegistry.TryReserveBytes(inputBytes, out inputLease))
+                    return Failed("RESOURCE_LIMIT_EXCEEDED", "MCP temporary input quota exceeded.", operationId);
+            }
+            using (inputLease)
+            {
             var vision = allowDocumentUpload ? VisionMode.Auto : VisionMode.Off;
             var options = new ConversionOptions
             {
@@ -91,6 +104,8 @@ public static class MarkItDownTools
                 return Failed("RESOURCE_LIMIT_EXCEEDED", "MCP conversion resource quota exceeded.", operationId);
             var assetUris = result.Assets.Select(a => $"markitdown://conversion/{operationId}/assets/{a.Id}").ToArray();
             return new DetailedConversionResponse(result.FidelityStatus.ToString(), result.Markdown, assetUris, diagnostics, result.Usage);
+            }
+            }
         }
         catch (OperationCanceledException) { throw; }
         catch (FileNotFoundException ex)

@@ -41,6 +41,30 @@ public sealed class ConversionAssetRegistryTests
         Assert.Equal(3, registry.PublishedBytes);
     }
 
+    [Fact]
+    public void Registry_ReservesActiveConversionSlotsAtomically()
+    {
+        var registry = new ConversionAssetRegistry(TimeSpan.FromMinutes(15), maxConversions: 1);
+
+        Assert.True(registry.TryAcquireConversion(out var lease));
+        Assert.False(registry.TryAcquireConversion(out _));
+        lease.Dispose();
+        Assert.True(registry.TryAcquireConversion(out var secondLease));
+        secondLease.Dispose();
+    }
+
+    [Fact]
+    public void Registry_ReservesTemporaryInputBytesAtomically()
+    {
+        var registry = new ConversionAssetRegistry(maxPublishedBytes: 3);
+
+        Assert.True(registry.TryReserveBytes(3, out var lease));
+        Assert.False(registry.TryReserveBytes(1, out _));
+        lease.Dispose();
+        Assert.True(registry.TryReserveBytes(1, out var secondLease));
+        secondLease.Dispose();
+    }
+
     private static async Task<InMemoryAssetStore> CreateStoreAsync(string content)
     {
         var store = new InMemoryAssetStore();
