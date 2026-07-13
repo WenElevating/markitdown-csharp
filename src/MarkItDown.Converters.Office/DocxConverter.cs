@@ -73,12 +73,14 @@ public sealed class DocxConverter : BaseConverter
                     ? FidelityStatus.Complete
                     : FidelityStatus.NotEvaluated;
                 var document = DocumentModelBuilder.FromMarkdown("Docx", markdown, fidelity);
+                var revisionDiagnostics = CreateRevisionDiagnostics(body);
                 document = document with
                 {
                     Blocks = document.Blocks.Select((block, index) => block with
                     {
                         Source = block.Source ?? new SourceLocation(Part: "word/document.xml", Index: index)
-                    }).ToArray()
+                    }).ToArray(),
+                    Diagnostics = revisionDiagnostics
                 };
                 return await OfficeDoclingEnhancer.EnhanceAsync(
                     "Docx", request, input.FilePath, document, cancellationToken);
@@ -175,6 +177,24 @@ public sealed class DocxConverter : BaseConverter
             foreach (var nested in EnumerateBodyBlocks(child))
                 yield return nested;
         }
+    }
+
+    private static IReadOnlyList<ConversionDiagnostic> CreateRevisionDiagnostics(Body body)
+    {
+        var inserted = body.Descendants<InsertedRun>().Count();
+        var deleted = body.Descendants<DeletedRun>().Count();
+        var diagnostics = new List<ConversionDiagnostic>();
+        if (inserted > 0)
+            diagnostics.Add(new ConversionDiagnostic(
+                "DOCX_REVISIONS_ACCEPTED", DiagnosticSeverity.Info,
+                $"Accepted {inserted} inserted revision run(s) in the default view.",
+                Backend: "Docx"));
+        if (deleted > 0)
+            diagnostics.Add(new ConversionDiagnostic(
+                "DOCX_REVISIONS_OMITTED", DiagnosticSeverity.Info,
+                $"Omitted {deleted} deleted revision run(s) from the default view.",
+                Backend: "Docx"));
+        return diagnostics;
     }
 
     private static string RenderTable(Table table)

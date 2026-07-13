@@ -33,6 +33,8 @@ public sealed class DocxConverterTests
             Assert.Contains("Inserted content", result.Markdown);
             Assert.Contains("Content control content", result.Markdown);
             Assert.DoesNotContain("Deleted content", result.Markdown);
+            Assert.Contains(result.Diagnostics ?? [], diagnostic => diagnostic.Code == "DOCX_REVISIONS_ACCEPTED");
+            Assert.Contains(result.Diagnostics ?? [], diagnostic => diagnostic.Code == "DOCX_REVISIONS_OMITTED");
             Assert.Contains("| Header A | Header B |", result.Markdown);
             Assert.Equal("Docx", result.Kind);
             Assert.Equal("word/document.xml", result.Document!.Blocks.First(block => block.Kind == "heading").Source!.Part);
