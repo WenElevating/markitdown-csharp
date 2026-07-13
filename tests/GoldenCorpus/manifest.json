@@ -35,19 +35,19 @@
       "format": "docx",
       "factory": "generated-office-smoke",
       "features": ["headings", "paragraphs", "tables", "multimodal-native"],
-      "expected": { "requiredText": ["Golden DOCX body"], "requiredHeadings": ["Golden DOCX"], "requiredTableCells": [], "minimumAssets": 1 }
+      "expected": { "requiredText": ["Golden DOCX body"], "requiredHeadings": ["Golden DOCX"], "requiredTableCells": ["Series", "Category", "Value", "Revenue", "Q1", "10", "Q2", "20"], "minimumAssets": 1 }
     },
     {
       "format": "pptx",
       "factory": "generated-office-smoke",
       "features": ["slide-order", "slide-boundary", "multimodal-native"],
-      "expected": { "requiredText": ["Golden PPTX body"], "requiredHeadings": ["Golden PPTX"], "requiredTableCells": [], "minimumAssets": 1 }
+      "expected": { "requiredText": ["Golden PPTX body"], "requiredHeadings": ["Golden PPTX"], "requiredTableCells": ["Series", "Category", "Value", "Revenue", "Q1", "10", "Q2", "20"], "minimumAssets": 1 }
     },
     {
       "format": "xlsx",
       "factory": "generated-office-smoke",
       "features": ["sheet-order", "formula-values", "multimodal-native"],
-      "expected": { "requiredText": ["Golden XLSX", "Alice", "Engineering"], "requiredHeadings": ["Golden XLSX"], "requiredTableCells": ["Name", "Department", "Alice", "Engineering"], "minimumAssets": 1 }
+      "expected": { "requiredText": ["Golden XLSX", "Alice", "Engineering"], "requiredHeadings": ["Golden XLSX"], "requiredTableCells": ["Name", "Department", "Alice", "Engineering", "Series", "Category", "Value", "Revenue", "Q1", "10", "Q2", "20"], "minimumAssets": 1 }
     }
   ]
 }

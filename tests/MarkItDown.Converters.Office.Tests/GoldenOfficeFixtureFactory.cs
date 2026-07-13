@@ -1,3 +1,4 @@
+using System.Text;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Presentation;
@@ -32,6 +33,8 @@ internal static class GoldenOfficeFixtureFactory
             new Paragraph(new W.Run(new W.Text("Golden DOCX body")))));
         var image = main.AddImagePart(ImagePartType.Png);
         image.FeedData(new MemoryStream(PngBytes()));
+        var chart = main.AddNewPart<ChartPart>();
+        chart.FeedData(new MemoryStream(Encoding.UTF8.GetBytes(ChartXml())));
         main.Document.Save();
     }
 
@@ -43,6 +46,8 @@ internal static class GoldenOfficeFixtureFactory
         var slidePart = presentationPart.AddNewPart<SlidePart>();
         var image = slidePart.AddImagePart(ImagePartType.Png);
         image.FeedData(new MemoryStream(PngBytes()));
+        var chart = slidePart.AddNewPart<ChartPart>();
+        chart.FeedData(new MemoryStream(Encoding.UTF8.GetBytes(ChartXml())));
         slidePart.Slide = new Slide(
             new CommonSlideData(new ShapeTree(
                 new NonVisualGroupShapeProperties(new NonVisualDrawingProperties { Id = 1, Name = "" }),
@@ -63,6 +68,9 @@ internal static class GoldenOfficeFixtureFactory
         var worksheetPart = workbookPart.AddNewPart<WorksheetPart>();
         var image = worksheetPart.AddImagePart(ImagePartType.Png);
         image.FeedData(new MemoryStream(PngBytes()));
+        var drawings = worksheetPart.AddNewPart<DrawingsPart>();
+        var chart = drawings.AddNewPart<ChartPart>();
+        chart.FeedData(new MemoryStream(Encoding.UTF8.GetBytes(ChartXml())));
         var sheetData = new SheetData(
             new Row(new Cell { CellReference = "A1", CellValue = new CellValue("Name"), DataType = CellValues.String }, new Cell { CellReference = "B1", CellValue = new CellValue("Department"), DataType = CellValues.String }),
             new Row(new Cell { CellReference = "A2", CellValue = new CellValue("Alice"), DataType = CellValues.String }, new Cell { CellReference = "B2", CellValue = new CellValue("Engineering"), DataType = CellValues.String }));
@@ -101,4 +109,14 @@ internal static class GoldenOfficeFixtureFactory
 
     private static byte[] PngBytes() => Convert.FromBase64String(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
+
+    private static string ChartXml() => """
+        <c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart">
+          <c:barChart><c:ser>
+            <c:tx><c:v>Revenue</c:v></c:tx>
+            <c:cat><c:strRef><c:strCache><c:pt><c:v>Q1</c:v></c:pt><c:pt><c:v>Q2</c:v></c:pt></c:strCache></c:strRef></c:cat>
+            <c:val><c:numRef><c:numCache><c:pt><c:v>10</c:v></c:pt><c:pt><c:v>20</c:v></c:pt></c:numCache></c:numRef></c:val>
+          </c:ser></c:barChart>
+        </c:chartSpace>
+        """;
 }

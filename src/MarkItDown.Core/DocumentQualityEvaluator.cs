@@ -135,6 +135,7 @@ public static class DocumentQualityEvaluator
         .Where(line => line.TrimStart().StartsWith('|'))
         .SelectMany(line => line.Trim().Trim('|').Split('|').Select(cell => cell.Trim()))
         .Where(cell => cell.Length > 0 && cell.Any(character => character != '-'))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
         .ToArray();
 
     private static double OrderedAccuracy(IReadOnlyList<string> expected, IReadOnlyList<DocumentBlock> actual)
