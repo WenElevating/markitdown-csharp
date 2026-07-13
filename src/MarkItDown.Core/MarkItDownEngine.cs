@@ -171,6 +171,7 @@ public sealed class MarkItDownEngine
                 Document: backendResult.Document,
                 Fidelity: backendResult.Fidelity,
                 Diagnostics: backendResult.Diagnostics);
+            result = ApplyOcrProviderStatus(result, context);
             if (assetTransaction is not null)
             {
                 await assetTransaction.CommitAsync(effectiveCancellationToken);
@@ -244,5 +245,31 @@ public sealed class MarkItDownEngine
             };
         }
         return result with { Fidelity = FidelityStatus.NotEvaluated, Diagnostics = diagnostics };
+    }
+
+    private static DocumentConversionResult ApplyOcrProviderStatus(
+        DocumentConversionResult result,
+        ConversionContext context)
+    {
+        if (!context.Properties.TryGetValue("ocrProviderStatus", out var value)
+            || value is not string message
+            || string.IsNullOrWhiteSpace(message))
+            return result;
+
+        var diagnostics = (result.Diagnostics ?? Array.Empty<ConversionDiagnostic>()).ToList();
+        if (diagnostics.Any(d => d.Code == "OCR_PROVIDER_UNAVAILABLE"))
+            return result;
+
+        diagnostics.Add(new ConversionDiagnostic(
+            "OCR_PROVIDER_UNAVAILABLE",
+            DiagnosticSeverity.Warning,
+            message,
+            AffectsSubstantiveContent: true,
+            Backend: "OCR",
+            RequiresReview: true));
+        var fidelity = result.Fidelity is FidelityStatus.Complete or FidelityStatus.NotEvaluated
+            ? FidelityStatus.Partial
+            : result.Fidelity;
+        return result with { Fidelity = fidelity, Diagnostics = diagnostics };
     }
 }

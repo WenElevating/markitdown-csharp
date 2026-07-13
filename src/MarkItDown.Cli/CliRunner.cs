@@ -44,6 +44,23 @@ public static class CliRunner
         Description = "Custom API endpoint (e.g. Azure OpenAI)"
     };
 
+    private static readonly Option<string[]> PluginDirectoryOption = new("--plugin-dir")
+    {
+        Description = "Plugin directory (can be specified more than once)",
+        DefaultValueFactory = _ => []
+    };
+
+    private static readonly Option<bool> ListPluginsOption = new("--list-plugins")
+    {
+        Description = "List discovered plugins and their capabilities"
+    };
+
+    private static readonly Option<string> OcrOption = new("--ocr")
+    {
+        Description = "OCR provider: off, auto, or a provider id",
+        DefaultValueFactory = _ => "off"
+    };
+
     private static readonly Option<string> BackendOption = new("--backend") { DefaultValueFactory = _ => "auto", Description = "Conversion backend: native, auto, or docling" };
     private static readonly Option<string> VisionOption = new("--vision") { DefaultValueFactory = _ => "auto", Description = "Visual enhancement: off, auto, or required" };
     private static readonly Option<string> DoclingModeOption = new("--docling-mode") { DefaultValueFactory = _ => "process", Description = "Docling transport: process or http" };
@@ -64,6 +81,9 @@ public static class CliRunner
         root.Arguments.Add(InputArgument);
         root.Options.Add(OutputOption);
         root.Options.Add(ListFormatsOption);
+        root.Options.Add(PluginDirectoryOption);
+        root.Options.Add(ListPluginsOption);
+        root.Options.Add(OcrOption);
         root.Options.Add(LlmKeyOption);
         root.Options.Add(LlmModelOption);
         root.Options.Add(LlmEndpointOption);
@@ -123,6 +143,13 @@ public static class CliRunner
             return 0;
         }
 
+        if (parseResult.GetValue(ListPluginsOption))
+        {
+            foreach (var line in ListPlugins(parseResult))
+                await stdout.WriteLineAsync(line);
+            return 0;
+        }
+
         var paths = parseResult.GetValue(InputArgument);
         if (paths is null || paths.Length == 0)
         {
@@ -139,7 +166,7 @@ public static class CliRunner
 
         try
         {
-            var context = BuildContext(parseResult);
+            var context = BuildContext(parseResult, LoadPlugins(parseResult));
             if (paths.Length == 1)
                 return await ConvertSingleAsync(engine, llmClient, paths[0], outputPath, stdout, context, cancellationToken);
 
@@ -172,6 +199,13 @@ public static class CliRunner
             return 0;
         }
 
+        if (parseResult.GetValue(ListPluginsOption))
+        {
+            foreach (var line in ListPlugins(parseResult))
+                Console.WriteLine(line);
+            return 0;
+        }
+
         var paths = parseResult.GetValue(InputArgument);
         if (paths is null || paths.Length == 0)
             return 0; // Let System.CommandLine show help
@@ -185,7 +219,7 @@ public static class CliRunner
 
         try
         {
-            var context = BuildContext(parseResult);
+            var context = BuildContext(parseResult, LoadPlugins(parseResult));
             if (paths.Length == 1)
                 return await ConvertSingleInvokeAsync(engine, llmClient, paths[0], outputPath, context);
 
@@ -498,7 +532,32 @@ public static class CliRunner
         return FileSystemBoundary.FindDuplicateOutput(inputPaths, outputPath);
     }
 
-    private static ConversionContext BuildContext(ParseResult parseResult)
+    private static PluginCatalog LoadPlugins(ParseResult parseResult)
+    {
+        var directories = parseResult.GetValue(PluginDirectoryOption);
+        return PluginLoader.Load(directories is { Length: > 0 } ? directories : null);
+    }
+
+    private static IEnumerable<string> ListPlugins(ParseResult parseResult)
+    {
+        var catalog = LoadPlugins(parseResult);
+        if (catalog.Plugins.Count == 0)
+        {
+            yield return "No plugins found.";
+            yield break;
+        }
+
+        foreach (var plugin in catalog.Plugins)
+        {
+            var manifest = plugin.Manifest;
+            var id = manifest?.Id ?? Path.GetFileName(plugin.Directory);
+            var version = manifest?.Version ?? "-";
+            var capabilities = manifest?.Capabilities is { Count: > 0 } values ? string.Join(',', values) : "-";
+            yield return $"{id}\t{version}\t{(plugin.IsLoaded ? "available" : "unavailable")}\t{capabilities}\t{plugin.Status}";
+        }
+    }
+
+    private static ConversionContext BuildContext(ParseResult parseResult, PluginCatalog plugins)
     {
         var backendText = parseResult.GetValue(BackendOption) ?? "auto";
         var visionText = parseResult.GetValue(VisionOption) ?? "auto";
@@ -537,6 +596,18 @@ public static class CliRunner
             ["assetsPath"] = parseResult.GetValue(AssetsOption),
             ["failOnPartial"] = parseResult.GetValue(FailOnPartialOption)
         };
+        var ocrMode = parseResult.GetValue(OcrOption) ?? "off";
+        if (string.IsNullOrWhiteSpace(ocrMode))
+            throw new ConversionException("--ocr cannot be empty. Expected off, auto, or a provider id.");
+        var selectedOcr = plugins.SelectOcrProvider(ocrMode, new ConversionContext { Pipeline = pipeline }, out var ocrReason);
+        if (ocrReason is not null)
+        {
+            properties["ocrProviderStatus"] = ocrReason;
+            if (!string.Equals(ocrMode, "auto", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(ocrMode, "off", StringComparison.OrdinalIgnoreCase))
+                throw new ConversionException(ocrReason);
+        }
+        properties["ocrMode"] = ocrMode;
         var doclingMode = parseResult.GetValue(DoclingModeOption) ?? "process";
         IDoclingTransport? doclingTransport = null;
         if (pipeline == PipelineMode.Multimodal && vision != VisionMode.Off)
@@ -576,7 +647,8 @@ public static class CliRunner
                 VisionMode = pipeline == PipelineMode.Multimodal ? vision : null,
                 Privacy = new PrivacyOptions { AllowDocumentUpload = allowUpload },
                 DoclingTransport = doclingTransport
-            }
+            },
+            OcrProvider = selectedOcr
         };
     }
 
@@ -656,6 +728,9 @@ public static class CliRunner
         await writer.WriteLineAsync("Options:");
         await writer.WriteLineAsync("  -o, --output     Output file or directory (default: stdout)");
         await writer.WriteLineAsync("  --list-formats   List all supported formats");
+        await writer.WriteLineAsync("  --plugin-dir     Plugin directory (repeatable)");
+        await writer.WriteLineAsync("  --list-plugins   List discovered plugins");
+        await writer.WriteLineAsync("  --ocr            off, auto, or provider id (default: off)");
         await writer.WriteLineAsync("  --llm-key        OpenAI API key (enables LLM captioning)");
         await writer.WriteLineAsync("  --llm-model      LLM model name (default: gpt-4o)");
         await writer.WriteLineAsync("  --llm-endpoint   Custom API endpoint (e.g. Azure OpenAI)");

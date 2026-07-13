@@ -60,6 +60,29 @@ public sealed class MarkItDownEngineTests
     }
 
     [Fact]
+    public async Task ConvertAsync_ReportsUnavailableOcrProviderAsPartialDiagnostic()
+    {
+        var engine = new MarkItDownEngine(builder => builder
+            .Add(new StubConverter("Html", ".html", "# Content")));
+        var context = new ConversionContext
+        {
+            Properties = new Dictionary<string, object?>
+            {
+                ["ocrProviderStatus"] = "OCR_PROVIDER_UNAVAILABLE: no installed OCR provider is available."
+            }
+        };
+
+        var result = await engine.ConvertAsync(new DocumentConversionRequest
+        {
+            FilePath = "test.html",
+            Context = context
+        });
+
+        Assert.Equal(FidelityStatus.Partial, result.FidelityStatus);
+        Assert.Contains(result.Diagnostics!, diagnostic => diagnostic.Code == "OCR_PROVIDER_UNAVAILABLE");
+    }
+
+    [Fact]
     public async Task ConvertAsync_FileNotFound_ThrowsFileNotFoundException()
     {
         var engine = new MarkItDownEngine(builder => { });

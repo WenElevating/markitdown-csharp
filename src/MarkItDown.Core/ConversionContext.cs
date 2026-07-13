@@ -73,6 +73,7 @@ public sealed record ConversionContext
     public ConversionOptions Options { get; init; } = new();
     public string OperationId { get; init; } = Guid.NewGuid().ToString("N");
     public IVisionAnalyzer? VisionAnalyzer { get; init; }
+    public IOcrProvider? OcrProvider { get; init; }
     public ILlmClient? LlmClient { get; init; }
     public string? AssetBasePath { get; init; }
     public int ContainerDepth { get; init; }

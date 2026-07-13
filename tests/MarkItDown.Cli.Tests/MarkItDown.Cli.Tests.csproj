@@ -20,4 +20,9 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\MarkItDown.Cli\MarkItDown.Cli.csproj" />
+    <ProjectReference Include="..\..\src\MarkItDown.Core\MarkItDown.Core.csproj" />
+  </ItemGroup>
+
 </Project>

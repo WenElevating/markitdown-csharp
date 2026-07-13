@@ -122,6 +122,36 @@ public sealed class CliRunnerTests
         Assert.Contains("![image]", result.Stdout);
     }
 
+    [Fact]
+    public async Task Cli_ListPluginsReportsInvalidPluginDirectory()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"markitdown-cli-plugin-{Guid.NewGuid():N}");
+        var plugin = Path.Combine(root, "broken");
+        Directory.CreateDirectory(plugin);
+        await File.WriteAllTextAsync(Path.Combine(plugin, "plugin.json"), "{ not-json }");
+        try
+        {
+            var result = await RunCliAsync("--list-plugins", "--plugin-dir", root);
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.Contains("unavailable", result.Stdout, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("manifest", result.Stdout, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Cli_ExplicitMissingOcrProviderReturnsDiagnosticError()
+    {
+        var result = await RunCliAsync(FixturePath.For("sample.html"), "--ocr", "missing-provider");
+
+        Assert.Equal(2, result.ExitCode);
+        Assert.Contains("OCR_PROVIDER_UNAVAILABLE", result.Stderr);
+    }
+
     private static async Task<CliResult> RunCliAsync(params string[] args)
     {
         var projectPath = Path.Combine(FixturePath.RepositoryRoot, "src", "MarkItDown.Cli", "MarkItDown.Cli.csproj");
